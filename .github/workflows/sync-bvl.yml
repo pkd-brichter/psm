@@ -1,11 +1,11 @@
 name: Sync BVL Data
 
 on:
-  schedule:
-    # Run every 2 days at 3:00 UTC
-    - cron: "0 3 1-31/2 * *"
-  push:
-    branches: [main]
+  # Auto-Sync deaktiviert (2026-06-20): Die BVL-Datenbank wird extern via
+  # pflanzenschutz-db (GitHub Pages) gehostet und NICHT mehr in dieses Repo
+  # committet — das vermeidet unbegrenztes Git-LFS-Wachstum (vorher ~2,3 GB).
+  # Der Workflow ist nur noch manuell auslösbar; das Ergebnis wird als
+  # herunterladbares Artefakt bereitgestellt, statt es zu committen.
   workflow_dispatch:
     inputs:
       force_rebuild:
@@ -18,7 +18,7 @@ on:
           - "false"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   sync:
@@ -56,29 +56,16 @@ jobs:
         run: |
           rm -f public/data/bvl/pflanzenschutz.sqlite public/data/bvl/pflanzenschutz.sqlite-*
 
-      - name: Check for changes
-        id: check_changes
-        run: |
-          if [ -n "$(git status --porcelain public/data/bvl/)" ]; then
-            echo "changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "changes=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Commit changes
-        if: steps.check_changes.outputs.changes == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add public/data/bvl/manifest.json
-          if ls public/data/bvl/*.sqlite.br >/dev/null 2>&1; then
-            git add public/data/bvl/*.sqlite.br
-          fi
-          if ls public/data/bvl/*.sqlite.zip >/dev/null 2>&1; then
-            git add public/data/bvl/*.sqlite.zip
-          fi
-          git commit -m "chore: update BVL database $(date +%Y-%m-%d)"
-          git push
+      - name: Upload database as artifact (NICHT ins Repo committen)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bvl-database
+          path: |
+            public/data/bvl/manifest.json
+            public/data/bvl/*.sqlite.br
+            public/data/bvl/*.sqlite.zip
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Summary
         run: |
@@ -91,4 +78,4 @@ jobs:
             SIZEZIP=$(du -h public/data/bvl/pflanzenschutz.sqlite.zip | cut -f1)
             echo "- Database (zip): $SIZEZIP" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "- Changes committed: ${{ steps.check_changes.outputs.changes }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Bereitgestellt als Artefakt: **bvl-database** (nicht committet)" >> $GITHUB_STEP_SUMMARY
