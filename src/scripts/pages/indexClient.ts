@@ -8,6 +8,7 @@ import { initCalculation } from "@scripts/features/calculation";
 import { initStartup } from "@scripts/features/startup";
 import { initDocumentation } from "@scripts/features/documentation";
 import { initSettings } from "@scripts/features/settings";
+import { initLager } from "@scripts/features/lager";
 import { initToastContainer } from "@scripts/core/toast";
 import type { AppState } from "@scripts/core/state";
 
@@ -63,6 +64,8 @@ function initIndex(): void {
   initDocumentation(documentationContainer, services);
   const settingsContainer = document.querySelector('[data-feature="settings"]');
   initSettings(settingsContainer, services);
+  const lagerContainer = document.querySelector('[data-feature="lager"]');
+  initLager(lagerContainer, services);
 
   const updateBodyBackground = (hasDatabase: boolean) => {
     const bodyEl = document.body;

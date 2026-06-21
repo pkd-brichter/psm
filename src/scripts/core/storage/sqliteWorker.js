@@ -1016,6 +1016,223 @@ async function seedInitialData(payload = {}) {
 }
 
 // ============================================
+// Mittel-Lager (Bestand / Verbrauch) Functions
+// ============================================
+
+function ensureLagerTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS lager_bewegungen (
+      id TEXT PRIMARY KEY,
+      kennr TEXT,
+      mittel_name TEXT NOT NULL,
+      wirkstoff TEXT,
+      typ TEXT NOT NULL DEFAULT 'zugang',
+      menge REAL NOT NULL,
+      einheit TEXT,
+      datum TEXT,
+      charge TEXT,
+      ablauf TEXT,
+      lieferant TEXT,
+      preis REAL,
+      bemerkung TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_lager_kennr ON lager_bewegungen(kennr);
+    CREATE INDEX IF NOT EXISTS idx_lager_datum ON lager_bewegungen(datum DESC);
+  `);
+}
+
+function mapLagerRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    kennr: row.kennr ?? null,
+    mittelName: row.mittel_name != null ? String(row.mittel_name) : "",
+    wirkstoff: row.wirkstoff ?? null,
+    typ: row.typ || "zugang",
+    menge: row.menge != null ? Number(row.menge) : 0,
+    einheit: row.einheit ?? null,
+    datum: row.datum ?? null,
+    charge: row.charge ?? null,
+    ablauf: row.ablauf ?? null,
+    lieferant: row.lieferant ?? null,
+    preis: row.preis != null ? Number(row.preis) : null,
+    bemerkung: row.bemerkung ?? null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+async function listLagerBewegungen(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureLagerTable();
+  const kennr = payload && payload.kennr != null ? String(payload.kennr) : null;
+  const rows = [];
+  db.exec({
+    sql: `SELECT * FROM lager_bewegungen ${kennr ? "WHERE kennr = ?" : ""}
+          ORDER BY datetime(COALESCE(datum, created_at)) DESC, created_at DESC`,
+    bind: kennr ? [kennr] : [],
+    rowMode: "object",
+    callback: (row) => rows.push(mapLagerRow(row)),
+  });
+  return { rows };
+}
+
+async function upsertLagerBewegung(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureLagerTable();
+  const id = String(payload.id || generateKulturMittelId());
+  const mittelName = String(payload.mittelName ?? payload.mittel_name ?? "").trim();
+  if (!mittelName) throw new Error("Mittelname ist erforderlich.");
+  const menge = Number(payload.menge);
+  if (!Number.isFinite(menge)) throw new Error("Menge ist ungültig.");
+  const now = new Date().toISOString();
+  const v = {
+    kennr: payload.kennr != null ? String(payload.kennr) : null,
+    wirkstoff: payload.wirkstoff != null ? String(payload.wirkstoff) : null,
+    typ: payload.typ != null ? String(payload.typ) : "zugang",
+    einheit: payload.einheit != null ? String(payload.einheit) : null,
+    datum: payload.datum != null ? String(payload.datum) : now.slice(0, 10),
+    charge: payload.charge != null ? String(payload.charge) : null,
+    ablauf: payload.ablauf != null ? String(payload.ablauf) : null,
+    lieferant: payload.lieferant != null ? String(payload.lieferant) : null,
+    preis:
+      payload.preis != null && Number.isFinite(Number(payload.preis))
+        ? Number(payload.preis)
+        : null,
+    bemerkung: payload.bemerkung != null ? String(payload.bemerkung) : null,
+  };
+  const exists = db.selectValue(
+    "SELECT 1 FROM lager_bewegungen WHERE id = ? LIMIT 1",
+    [id]
+  );
+  if (exists) {
+    const stmt = db.prepare(
+      `UPDATE lager_bewegungen SET kennr=?, mittel_name=?, wirkstoff=?, typ=?, menge=?, einheit=?, datum=?, charge=?, ablauf=?, lieferant=?, preis=?, bemerkung=?, updated_at=? WHERE id=?`
+    );
+    stmt.bind([
+      v.kennr, mittelName, v.wirkstoff, v.typ, menge, v.einheit, v.datum,
+      v.charge, v.ablauf, v.lieferant, v.preis, v.bemerkung, now, id,
+    ]);
+    stmt.step();
+    stmt.finalize();
+  } else {
+    const stmt = db.prepare(
+      `INSERT INTO lager_bewegungen (id, kennr, mittel_name, wirkstoff, typ, menge, einheit, datum, charge, ablauf, lieferant, preis, bemerkung, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    stmt.bind([
+      id, v.kennr, mittelName, v.wirkstoff, v.typ, menge, v.einheit, v.datum,
+      v.charge, v.ablauf, v.lieferant, v.preis, v.bemerkung, now, now,
+    ]);
+    stmt.step();
+    stmt.finalize();
+  }
+  let record = null;
+  db.exec({
+    sql: "SELECT * FROM lager_bewegungen WHERE id = ? LIMIT 1",
+    bind: [id],
+    rowMode: "object",
+    callback: (row) => {
+      if (!record) record = mapLagerRow(row);
+    },
+  });
+  return record;
+}
+
+async function deleteLagerBewegung(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureLagerTable();
+  const id = String(payload.id ?? "").trim();
+  if (!id) throw new Error("ID fehlt.");
+  const stmt = db.prepare("DELETE FROM lager_bewegungen WHERE id = ?");
+  stmt.bind([id]);
+  stmt.step();
+  stmt.finalize();
+  return { success: true };
+}
+
+/**
+ * Lager-Übersicht je Mittel: Zugänge (Ledger) − Verbrauch (Anwendungen aus
+ * history_items) = Bestand. Plus BVL-Zulassungsende & nächstes Ablaufdatum.
+ */
+async function getLagerUebersicht() {
+  if (!db) throw new Error("Database not initialized");
+  ensureLagerTable();
+  const map = new Map();
+  const keyOf = (kennr, name) =>
+    (kennr && String(kennr).trim()) || `name:${String(name || "").toLowerCase().trim()}`;
+  const ensure = (kennr, name) => {
+    const k = keyOf(kennr, name);
+    if (!map.has(k)) {
+      map.set(k, {
+        kennr: kennr || null,
+        name: name || "",
+        einheit: null,
+        wirkstoff: null,
+        zugang: 0,
+        verbraucht: 0,
+        bestand: 0,
+        zulEnde: null,
+        naechsterAblauf: null,
+        anwendungen: 0,
+      });
+    }
+    return map.get(k);
+  };
+
+  // Zugänge / Korrekturen aus dem Ledger (signiert)
+  db.exec({
+    sql: `SELECT kennr, mittel_name, einheit, wirkstoff,
+                 SUM(menge) AS zugang, MIN(NULLIF(ablauf,'')) AS naechster_ablauf
+          FROM lager_bewegungen GROUP BY kennr, mittel_name`,
+    rowMode: "object",
+    callback: (row) => {
+      const e = ensure(row.kennr, row.mittel_name);
+      e.zugang += Number(row.zugang) || 0;
+      if (row.einheit && !e.einheit) e.einheit = row.einheit;
+      if (row.wirkstoff && !e.wirkstoff) e.wirkstoff = row.wirkstoff;
+      if (row.naechster_ablauf) e.naechsterAblauf = row.naechster_ablauf;
+    },
+  });
+
+  // Verbrauch aus den Anwendungen
+  db.exec({
+    sql: `SELECT zulassungsnummer AS kennr, medium_name, medium_unit, wirkstoff,
+                 SUM(calculated_total) AS verbraucht, COUNT(*) AS n
+          FROM history_items GROUP BY zulassungsnummer, medium_name`,
+    rowMode: "object",
+    callback: (row) => {
+      const e = ensure(row.kennr, row.medium_name);
+      e.verbraucht += Number(row.verbraucht) || 0;
+      e.anwendungen += Number(row.n) || 0;
+      if (row.medium_unit && !e.einheit) e.einheit = row.medium_unit;
+      if (row.wirkstoff && !e.wirkstoff) e.wirkstoff = row.wirkstoff;
+    },
+  });
+
+  // BVL-Zulassungsende je kennr
+  const rows = Array.from(map.values());
+  for (const e of rows) {
+    e.bestand = e.zugang - e.verbraucht;
+    if (e.kennr) {
+      try {
+        const zulEnde = db.selectValue(
+          "SELECT zul_ende FROM bvl_mittel WHERE kennr = ? LIMIT 1",
+          [e.kennr]
+        );
+        if (zulEnde) e.zulEnde = String(zulEnde);
+      } catch {
+        /* bvl_mittel evtl. nicht vorhanden */
+      }
+    }
+  }
+  rows.sort((a, b) => (b.verbraucht || 0) - (a.verbraucht || 0));
+  return { rows };
+}
+
+// ============================================
 // Saved EPPO/BBCH Favorites Functions
 // ============================================
 
@@ -1622,6 +1839,18 @@ self.onmessage = async function (event) {
         break;
       case "seedInitialData":
         result = await seedInitialData(payload);
+        break;
+      case "listLagerBewegungen":
+        result = await listLagerBewegungen(payload);
+        break;
+      case "upsertLagerBewegung":
+        result = await upsertLagerBewegung(payload);
+        break;
+      case "deleteLagerBewegung":
+        result = await deleteLagerBewegung(payload);
+        break;
+      case "getLagerUebersicht":
+        result = await getLagerUebersicht();
         break;
       case "diagnoseBvlSchema":
         result = await diagnoseBvlSchema();
@@ -2524,6 +2753,24 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 15 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 16: Mittel-Lager (Bestandsbewegungen)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const lagerTableMissing = !hasTable(db, "lager_bewegungen");
+  if (lagerTableMissing || postMigrationVersion < 16) {
+    console.log("Migrating database to version 16 (lager_bewegungen)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureLagerTable(db);
+      db.exec("PRAGMA user_version = 16");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 16 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 16 failed:", error);
       throw error;
     }
   }

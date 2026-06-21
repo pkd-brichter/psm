@@ -1007,6 +1007,31 @@ export async function seedInitialData(payload: {
   return await callWorker("seedInitialData", payload);
 }
 
+// Mittel-Lager
+export async function listLagerBewegungen(
+  payload: { kennr?: string } = {}
+): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("listLagerBewegungen", payload);
+}
+
+export async function upsertLagerBewegung(payload: any): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("upsertLagerBewegung", payload);
+}
+
+export async function deleteLagerBewegung(payload: {
+  id: string;
+}): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("deleteLagerBewegung", payload);
+}
+
+export async function getLagerUebersicht(): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("getLagerUebersicht");
+}
+
 /**
  * Diagnose BVL schema
  */
