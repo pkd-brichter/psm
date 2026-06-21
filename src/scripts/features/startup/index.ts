@@ -248,7 +248,7 @@ export function initStartup(
           <!-- Branding Logo oben links -->
           <div style="position: absolute; top: 0.75rem; left: 0.75rem;">
             <div class="d-flex align-items-center gap-2">
-              <img src="/assets/img/favicon.svg" alt="PSM" style="width: 28px; height: 28px;" />
+              <img src="${import.meta.env.BASE_URL}assets/img/favicon.svg" alt="PSM" style="width: 28px; height: 28px;" />
               <div style="text-align: left; line-height: 1.1;">
                 <span style="font-size: 0.9rem; font-weight: 600; color: var(--text);">Digitale<span style="color: var(--primary-600);">-</span>PSM<span style="font-weight: 400; opacity: 0.5; font-size: 0.75rem;">.de</span></span>
               </div>

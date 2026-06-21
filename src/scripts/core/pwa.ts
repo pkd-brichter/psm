@@ -60,10 +60,13 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 
   try {
-    swRegistration = await navigator.serviceWorker.register("/sw.js", {
-      scope: "/",
-      updateViaCache: "none",
-    });
+    swRegistration = await navigator.serviceWorker.register(
+      `${import.meta.env.BASE_URL}sw.js`,
+      {
+        scope: import.meta.env.BASE_URL,
+        updateViaCache: "none",
+      }
+    );
 
     console.log("[PWA] Service Worker registriert:", swRegistration.scope);
 

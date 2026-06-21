@@ -5,8 +5,8 @@
  * Also supports local database from monorepo build
  */
 
-// Local database path (monorepo build)
-const LOCAL_DB_PATH = "/data/bvl/pflanzenschutz.sqlite";
+// Local database path (monorepo build) – base-aware (z. B. "/psm/")
+const LOCAL_DB_PATH = `${import.meta.env.BASE_URL}data/bvl/pflanzenschutz.sqlite`;
 
 const DEFAULT_MANIFEST_URL =
   "https://abbas-hoseiny.github.io/pflanzenschutz-db/manifest.json";

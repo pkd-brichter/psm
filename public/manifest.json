@@ -2,8 +2,8 @@
   "name": "Digitale PSM - Pflanzenschutz-Dokumentation",
   "short_name": "DigitalePSM",
   "description": "Digitale Berechnung, Dokumentation und Verwaltung von Pflanzenschutzmittel-Anwendungen mit offiziellen BVL-Daten.",
-  "start_url": "/?source=pwa",
-  "scope": "/",
+  "start_url": "/psm/?source=pwa",
+  "scope": "/psm/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
@@ -14,31 +14,31 @@
   "dir": "ltr",
   "icons": [
     {
-      "src": "/assets/img/psm-icon-192.png",
+      "src": "/psm/assets/img/psm-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/psm-icon-384.png",
+      "src": "/psm/assets/img/psm-icon-384.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/psm-icon-512.png",
+      "src": "/psm/assets/img/psm-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/psm-icon-512.png",
+      "src": "/psm/assets/img/psm-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/assets/img/psm-icon-512.svg",
+      "src": "/psm/assets/img/psm-icon-512.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
@@ -46,7 +46,7 @@
   ],
   "screenshots": [
     {
-      "src": "/assets/img/og-image.png",
+      "src": "/psm/assets/img/og-image.png",
       "sizes": "1200x630",
       "type": "image/png",
       "form_factor": "wide",
@@ -55,7 +55,7 @@
   ],
   "file_handlers": [
     {
-      "action": "/",
+      "action": "/psm/",
       "accept": {
         "application/x-sqlite3": [".sqlite", ".db"],
         "application/json": [".json"]
@@ -69,13 +69,7 @@
   "protocol_handlers": [
     {
       "protocol": "web+psm",
-      "url": "/?protocol=%s"
-    }
-  ],
-  "related_applications": [
-    {
-      "platform": "webapp",
-      "url": "https://digitale-psm.de/manifest.json"
+      "url": "/psm/?protocol=%s"
     }
   ],
   "prefer_related_applications": false,

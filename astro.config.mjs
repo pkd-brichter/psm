@@ -4,8 +4,8 @@ import sitemap from "@astrojs/sitemap";
 
 // https://astro.build/config
 export default defineConfig({
-  site: "https://www.digitale-psm.de",
-  base: "/",
+  site: "https://pkd-brichter.github.io",
+  base: "/psm/",
   output: "static",
   build: {
     inlineStylesheets: "auto",

@@ -16,12 +16,14 @@ const DYNAMIC_CACHE = `psm-dynamic-${CACHE_VERSION}`;
 const DB_STATE_KEY = 'psm-db-state';
 
 // Statische Assets, die immer gecacht werden sollen
+// Basis-Pfad aus dem SW-Scope ableiten (funktioniert unter "/" und "/psm/")
+const BASE = new URL('./', self.location).pathname;
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/assets/img/psm-icon.svg',
-  '/assets/img/favicon.svg'
+  BASE,
+  BASE + 'index.html',
+  BASE + 'manifest.json',
+  BASE + 'assets/img/psm-icon.svg',
+  BASE + 'assets/img/favicon.svg'
 ];
 
 // Patterns für dynamisches Caching
@@ -145,7 +147,7 @@ self.addEventListener('fetch', (event) => {
             }
             // Fallback zur Startseite für Navigation
             if (event.request.mode === 'navigate') {
-              return caches.match('/');
+              return caches.match(BASE);
             }
             return new Response('Offline', { status: 503 });
           });
