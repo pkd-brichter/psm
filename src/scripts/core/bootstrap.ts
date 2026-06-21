@@ -13,7 +13,6 @@ import {
   markManualDebugOverlayAccess,
 } from "../dev/debugOverlayGate";
 import { initQsMode } from "./qsMode";
-import { initInfos } from "../features/infos/infosClient";
 import { initToastContainer } from "./toast";
 import { initPwa, storeFileHandle, saveDbState } from "./pwa";
 
@@ -150,12 +149,6 @@ export async function bootstrap() {
 
   // Initialize Toast notification system
   initToastContainer();
-
-  // Infos-Feature initialisieren
-  const infosContainer = document.querySelector('[data-feature="infos"]');
-  if (infosContainer instanceof HTMLElement) {
-    initInfos(services);
-  }
 
   setupUnloadWarning(services.state);
 
