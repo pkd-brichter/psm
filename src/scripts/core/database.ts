@@ -18,6 +18,8 @@ import {
   setActiveGpsPointId as workerSetActiveGpsPointId,
   getActiveGpsPointId as workerGetActiveGpsPointId,
   persistSqliteDatabaseFile,
+  listKulturen,
+  seedInitialData,
 } from "./storage/sqlite";
 
 function clone(obj: any): any {
@@ -243,6 +245,50 @@ function assertSqliteDriver(action: string): void {
     throw new Error(
       `${action} erfordert eine aktive SQLite-Datenbank (aktueller Treiber: ${driver}).`,
     );
+  }
+}
+
+/**
+ * Spielt die Pestalozzi-Stammdaten (Standorte + Kultur→Mittel) in eine LEERE
+ * Datenbank ein. Wird bei jedem DB-Connect aufgerufen, seedet aber nur, was
+ * leer ist (idempotent) – so kommt eine NEU angelegte Datei vorbefüllt, ohne
+ * bestehende Nutzerdaten zu verändern. Die Seed-Daten liegen als statische
+ * Datei in der App (public/data/pestalozzi-seed.json) und werden nur bei
+ * Bedarf nachgeladen (nicht im Haupt-Bundle).
+ */
+export async function ensureInitialSeed(): Promise<void> {
+  if (getActiveDriverKey() !== "sqlite") {
+    return;
+  }
+  try {
+    const [gps, kult] = await Promise.all([
+      workerListGpsPoints(),
+      listKulturen(),
+    ]);
+    const needGps = !gps?.rows?.length;
+    const needKm = !kult?.rows?.length;
+    if (!needGps && !needKm) {
+      return;
+    }
+    const url = `${import.meta.env.BASE_URL}data/pestalozzi-seed.json`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn("[Seed] pestalozzi-seed.json nicht erreichbar:", res.status);
+      return;
+    }
+    const seed = await res.json();
+    const inserted = await seedInitialData({
+      gpsPoints: needGps ? seed.gpsPoints || [] : [],
+      kulturMittel: needKm ? seed.kulturMittel || [] : [],
+    });
+    try {
+      await persistSqliteDatabaseFile();
+    } catch {
+      /* kein Datei-Handle (neue, noch ungespeicherte DB) – wird beim Speichern geschrieben */
+    }
+    console.log("[Seed] Pestalozzi-Stammdaten eingespielt:", inserted);
+  } catch (err) {
+    console.warn("[Seed] Pestalozzi-Seed übersprungen:", err);
   }
 }
 

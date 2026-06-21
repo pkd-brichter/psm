@@ -4,7 +4,7 @@ import {
   setActiveDriver,
   getActiveDriverKey,
 } from "./storage/index";
-import { loadGpsPoints } from "./database";
+import { loadGpsPoints, ensureInitialSeed } from "./database";
 import { getState, patchState, subscribeState, updateSlice } from "./state";
 import { emit, subscribe as subscribeEvent } from "./eventBus";
 import { registerHistorySeeder } from "../dev/historySeeder";
@@ -213,6 +213,8 @@ export async function bootstrap() {
       return;
     }
     try {
+      // Pestalozzi-Stammdaten in leere DB einspielen (neue Datei kommt vorbefüllt)
+      await ensureInitialSeed();
       await loadGpsPoints();
     } catch (err) {
       console.warn("GPS-Punkte konnten beim Start nicht geladen werden", err);

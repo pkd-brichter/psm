@@ -940,6 +940,81 @@ async function deleteKulturMittel(payload = {}) {
   return { success: true };
 }
 
+/**
+ * Spielt die Pestalozzi-Stammdaten (Standorte + Kultur→Mittel) in eine
+ * LEERE Datenbank ein (idempotent: je Tabelle nur, wenn sie leer ist).
+ * Die Daten kommen aus der App (public/data/pestalozzi-seed.json).
+ */
+async function seedInitialData(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureGpsPointTable();
+  ensureKulturMittelTable();
+  const now = new Date().toISOString();
+  const result = { gpsPoints: 0, kulturMittel: 0 };
+
+  const gpsPoints = Array.isArray(payload.gpsPoints) ? payload.gpsPoints : [];
+  if (gpsPoints.length && (db.selectValue("SELECT COUNT(*) FROM gps_points") || 0) === 0) {
+    db.exec("BEGIN TRANSACTION");
+    try {
+      const stmt = db.prepare(
+        `INSERT INTO gps_points (id,name,description,latitude,longitude,source,created_at,updated_at,nutzflaeche_qm,kind)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`
+      );
+      for (const p of gpsPoints) {
+        stmt.bind([
+          String(p.id), String(p.name ?? ""), p.description ?? null,
+          Number(p.latitude), Number(p.longitude), p.source ?? null,
+          p.created_at || now, p.updated_at || now,
+          p.nutzflaeche_qm != null ? Number(p.nutzflaeche_qm) : null,
+          p.kind ?? null,
+        ]);
+        stmt.step();
+        stmt.reset();
+      }
+      stmt.finalize();
+      db.exec("COMMIT");
+      result.gpsPoints = gpsPoints.length;
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
+  const km = Array.isArray(payload.kulturMittel) ? payload.kulturMittel : [];
+  if (km.length && (db.selectValue("SELECT COUNT(*) FROM kultur_mittel") || 0) === 0) {
+    db.exec("BEGIN TRANSACTION");
+    try {
+      const stmt = db.prepare(
+        `INSERT INTO kultur_mittel (id,kultur,anbau,problem,mittel_name,kennr,wirkstoff,eppo_code,bbch_default,bbch,wartezeit,aufwand_wert,aufwand_einheit,aufwand_bezug,max_anwendungen,bemerkung,ist_psm,ist_kupfer,sort_order,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      );
+      for (const r of km) {
+        stmt.bind([
+          String(r.id), String(r.kultur ?? ""), r.anbau ?? null, r.problem ?? null,
+          String(r.mittel_name ?? ""), r.kennr ?? null, r.wirkstoff ?? null,
+          r.eppo_code ?? null, r.bbch_default ?? null, r.bbch ?? null,
+          r.wartezeit ?? null, r.aufwand_wert ?? null, r.aufwand_einheit ?? null,
+          r.aufwand_bezug ?? null, r.max_anwendungen ?? null, r.bemerkung ?? null,
+          r.ist_psm != null ? Number(r.ist_psm) : 1,
+          r.ist_kupfer != null ? Number(r.ist_kupfer) : 0,
+          r.sort_order != null ? Number(r.sort_order) : 0,
+          r.created_at || now, r.updated_at || now,
+        ]);
+        stmt.step();
+        stmt.reset();
+      }
+      stmt.finalize();
+      db.exec("COMMIT");
+      result.kulturMittel = km.length;
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
+  return result;
+}
+
 // ============================================
 // Saved EPPO/BBCH Favorites Functions
 // ============================================
@@ -1544,6 +1619,9 @@ self.onmessage = async function (event) {
         break;
       case "deleteKulturMittel":
         result = await deleteKulturMittel(payload);
+        break;
+      case "seedInitialData":
+        result = await seedInitialData(payload);
         break;
       case "diagnoseBvlSchema":
         result = await diagnoseBvlSchema();

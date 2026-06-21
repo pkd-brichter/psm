@@ -997,6 +997,16 @@ export async function deleteKulturMittel(payload: {
   return await callWorker("deleteKulturMittel", payload);
 }
 
+export async function seedInitialData(payload: {
+  gpsPoints?: any[];
+  kulturMittel?: any[];
+}): Promise<any> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("seedInitialData", payload);
+}
+
 /**
  * Diagnose BVL schema
  */
