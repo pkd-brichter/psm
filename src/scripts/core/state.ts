@@ -116,7 +116,8 @@ export interface AppState {
       | "lookup"
       | "gps"
       | "import"
-      | "lager";
+      | "lager"
+      | "acker";
     storageDriver: "memory" | "sqlite" | "filesystem" | "localstorage";
   };
   company: {

@@ -1016,6 +1016,152 @@ async function seedInitialData(payload = {}) {
 }
 
 // ============================================
+// Acker-Planer (Freiland-Flächen) Functions
+// ============================================
+
+function ensureAckerTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS ackerflaechen (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kultur TEXT,
+      eppo_code TEXT,
+      standort_id TEXT,
+      color TEXT,
+      geojson TEXT,
+      area_qm REAL,
+      bed_w REAL,
+      path_w REAL,
+      row_sp REAL,
+      in_row_sp REAL,
+      angle REAL,
+      beds INTEGER,
+      bed_meters REAL,
+      plants INTEGER,
+      bemerkung TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ackerflaechen_name ON ackerflaechen(name COLLATE NOCASE);
+  `);
+}
+
+function mapAckerRow(row) {
+  if (!row) return null;
+  let latlngs = [];
+  try {
+    latlngs = row.geojson ? JSON.parse(row.geojson) : [];
+  } catch {
+    latlngs = [];
+  }
+  return {
+    id: String(row.id),
+    name: row.name != null ? String(row.name) : "",
+    kultur: row.kultur ?? null,
+    eppoCode: row.eppo_code ?? null,
+    standortId: row.standort_id ?? null,
+    color: row.color ?? null,
+    latlngs,
+    areaQm: row.area_qm != null ? Number(row.area_qm) : 0,
+    bedW: row.bed_w != null ? Number(row.bed_w) : null,
+    pathW: row.path_w != null ? Number(row.path_w) : null,
+    rowSp: row.row_sp != null ? Number(row.row_sp) : null,
+    inRowSp: row.in_row_sp != null ? Number(row.in_row_sp) : null,
+    angle: row.angle != null ? Number(row.angle) : 0,
+    beds: row.beds != null ? Number(row.beds) : 0,
+    bedMeters: row.bed_meters != null ? Number(row.bed_meters) : 0,
+    plants: row.plants != null ? Number(row.plants) : 0,
+    bemerkung: row.bemerkung ?? null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+async function listAckerflaechen() {
+  if (!db) throw new Error("Database not initialized");
+  ensureAckerTable();
+  const rows = [];
+  db.exec({
+    sql: `SELECT * FROM ackerflaechen ORDER BY datetime(created_at) ASC`,
+    rowMode: "object",
+    callback: (row) => rows.push(mapAckerRow(row)),
+  });
+  return { rows };
+}
+
+async function upsertAckerflaeche(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureAckerTable();
+  const id = String(payload.id || generateKulturMittelId());
+  const name = String(payload.name ?? "").trim() || "Fläche";
+  const now = new Date().toISOString();
+  const geojson = JSON.stringify(
+    Array.isArray(payload.latlngs) ? payload.latlngs : []
+  );
+  const num = (x) => (x != null && Number.isFinite(Number(x)) ? Number(x) : null);
+  const v = [
+    name,
+    payload.kultur != null ? String(payload.kultur) : null,
+    payload.eppoCode != null ? String(payload.eppoCode) : null,
+    payload.standortId != null ? String(payload.standortId) : null,
+    payload.color != null ? String(payload.color) : null,
+    geojson,
+    num(payload.areaQm),
+    num(payload.bedW),
+    num(payload.pathW),
+    num(payload.rowSp),
+    num(payload.inRowSp),
+    num(payload.angle),
+    num(payload.beds),
+    num(payload.bedMeters),
+    num(payload.plants),
+    payload.bemerkung != null ? String(payload.bemerkung) : null,
+  ];
+  const exists = db.selectValue(
+    "SELECT 1 FROM ackerflaechen WHERE id = ? LIMIT 1",
+    [id]
+  );
+  if (exists) {
+    const stmt = db.prepare(
+      `UPDATE ackerflaechen SET name=?, kultur=?, eppo_code=?, standort_id=?, color=?, geojson=?, area_qm=?, bed_w=?, path_w=?, row_sp=?, in_row_sp=?, angle=?, beds=?, bed_meters=?, plants=?, bemerkung=?, updated_at=? WHERE id=?`
+    );
+    stmt.bind([...v, now, id]);
+    stmt.step();
+    stmt.finalize();
+  } else {
+    const stmt = db.prepare(
+      `INSERT INTO ackerflaechen (name, kultur, eppo_code, standort_id, color, geojson, area_qm, bed_w, path_w, row_sp, in_row_sp, angle, beds, bed_meters, plants, bemerkung, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    stmt.bind([...v, now, now, id]);
+    stmt.step();
+    stmt.finalize();
+  }
+  let record = null;
+  db.exec({
+    sql: "SELECT * FROM ackerflaechen WHERE id = ? LIMIT 1",
+    bind: [id],
+    rowMode: "object",
+    callback: (row) => {
+      if (!record) record = mapAckerRow(row);
+    },
+  });
+  return record;
+}
+
+async function deleteAckerflaeche(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureAckerTable();
+  const id = String(payload.id ?? "").trim();
+  if (!id) throw new Error("ID fehlt.");
+  const stmt = db.prepare("DELETE FROM ackerflaechen WHERE id = ?");
+  stmt.bind([id]);
+  stmt.step();
+  stmt.finalize();
+  return { success: true };
+}
+
+// ============================================
 // Mittel-Lager (Bestand / Verbrauch) Functions
 // ============================================
 
@@ -1851,6 +1997,15 @@ self.onmessage = async function (event) {
         break;
       case "getLagerUebersicht":
         result = await getLagerUebersicht();
+        break;
+      case "listAckerflaechen":
+        result = await listAckerflaechen();
+        break;
+      case "upsertAckerflaeche":
+        result = await upsertAckerflaeche(payload);
+        break;
+      case "deleteAckerflaeche":
+        result = await deleteAckerflaeche(payload);
         break;
       case "diagnoseBvlSchema":
         result = await diagnoseBvlSchema();
@@ -2771,6 +2926,24 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 16 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 17: Acker-Planer (Freiland-Flächen)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const ackerTableMissing = !hasTable(db, "ackerflaechen");
+  if (ackerTableMissing || postMigrationVersion < 17) {
+    console.log("Migrating database to version 17 (ackerflaechen)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureAckerTable(db);
+      db.exec("PRAGMA user_version = 17");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 17 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 17 failed:", error);
       throw error;
     }
   }

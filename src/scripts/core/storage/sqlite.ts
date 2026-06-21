@@ -1032,6 +1032,24 @@ export async function getLagerUebersicht(): Promise<any> {
   return await callWorker("getLagerUebersicht");
 }
 
+// Acker-Planer (Freiland-Flächen)
+export async function listAckerflaechen(): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("listAckerflaechen");
+}
+
+export async function upsertAckerflaeche(payload: any): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("upsertAckerflaeche", payload);
+}
+
+export async function deleteAckerflaeche(payload: {
+  id: string;
+}): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("deleteAckerflaeche", payload);
+}
+
 /**
  * Diagnose BVL schema
  */

@@ -9,6 +9,7 @@ import { initStartup } from "@scripts/features/startup";
 import { initDocumentation } from "@scripts/features/documentation";
 import { initSettings } from "@scripts/features/settings";
 import { initLager } from "@scripts/features/lager";
+import { initAcker } from "@scripts/features/acker";
 import { initToastContainer } from "@scripts/core/toast";
 import type { AppState } from "@scripts/core/state";
 
@@ -66,6 +67,8 @@ function initIndex(): void {
   initSettings(settingsContainer, services);
   const lagerContainer = document.querySelector('[data-feature="lager"]');
   initLager(lagerContainer, services);
+  const ackerContainer = document.querySelector('[data-feature="acker"]');
+  initAcker(ackerContainer, services);
 
   const updateBodyBackground = (hasDatabase: boolean) => {
     const bodyEl = document.body;
