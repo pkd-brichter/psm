@@ -233,6 +233,8 @@ type GpsPointInput = {
   latitude: number;
   longitude: number;
   source?: string | null;
+  nutzflaecheQm?: number | null;
+  kind?: string | null;
 };
 
 function assertSqliteDriver(action: string): void {
@@ -270,6 +272,13 @@ function normalizeGpsPoint(raw: any): GpsPoint {
     latitude,
     longitude,
     source: raw.source != null ? String(raw.source) : null,
+    nutzflaecheQm:
+      raw.nutzflaeche_qm != null
+        ? Number(raw.nutzflaeche_qm)
+        : raw.nutzflaecheQm != null
+          ? Number(raw.nutzflaecheQm)
+          : null,
+    kind: raw.kind != null ? String(raw.kind) : null,
     createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updated_at || raw.updatedAt || new Date().toISOString(),
   };
@@ -363,6 +372,11 @@ export async function saveGpsPoint(
       latitude,
       longitude,
       source: input.source ?? null,
+      nutzflaecheQm:
+        input.nutzflaecheQm != null && Number.isFinite(Number(input.nutzflaecheQm))
+          ? Number(input.nutzflaecheQm)
+          : null,
+      kind: input.kind ?? null,
     };
 
     updateGpsState({ pending: true, lastError: null });

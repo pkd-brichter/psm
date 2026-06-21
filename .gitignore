@@ -37,3 +37,10 @@ database/*.sqlite
 # cloned repos
 pflanzenschutzmittelzulassung-api/
 pflanzenschutz-db/
+
+# lokale Arbeits-/Datendatenbank (Nutzerdaten – bewusst NICHT in Git, LFS-Bloat)
+/*.sqlite
+/*.sqlite-*
+
+# lokale Quell-Dokumente / Scans (groß)
+/documents/

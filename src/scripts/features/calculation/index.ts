@@ -27,6 +27,8 @@ import {
   incrementBbchUsage,
   getFrequentEppo,
   getFrequentBbch,
+  listKulturen,
+  listKulturMittel,
 } from "@scripts/core/storage/sqlite";
 import {
   buildMediumTableHead,
@@ -41,7 +43,7 @@ import {
   searchEppoSuggestions,
   searchBbchSuggestions,
 } from "@scripts/core/lookups";
-import { renderQsBadge } from "@scripts/core/qsMode";
+import { renderQsBadge, validateQsFields } from "@scripts/core/qsMode";
 import {
   renderQsFieldsHtml,
   extractQsFieldsFromForm,
@@ -175,17 +177,20 @@ function createSection(
                 <label class="form-label calc-label" for="calc-standort">
                   ${escapeHtml(labels.calculation.fields.location.label)}
                 </label>
-                <input type="text" class="form-control calc-input" 
-                  id="calc-standort" name="calc-standort" 
-                  value="${escapeAttr(formDefaults.location || "")}" />
+                <select class="form-select calc-input" id="calc-standort"
+                  name="calc-standort" data-role="gps-point-select">
+                  <option value="">Standort wählen ...</option>
+                </select>
+                <div class="form-text calc-hint" data-role="gps-selection-hint"></div>
               </div>
               <div class="col-md-3">
                 <label class="form-label calc-label" for="calc-kultur">
                   ${escapeHtml(labels.calculation.fields.crop.label)}
                 </label>
-                <input type="text" class="form-control calc-input" 
-                  id="calc-kultur" name="calc-kultur" 
-                  value="${escapeAttr(formDefaults.crop || "")}" />
+                <select class="form-select calc-input" id="calc-kultur"
+                  name="calc-kultur" data-role="kultur-select">
+                  <option value="">Kultur wählen ...</option>
+                </select>
               </div>
               <div class="col-md-3">
                 <label class="form-label calc-label" for="calc-area-ha">
@@ -242,7 +247,21 @@ function createSection(
               </div>
             </div>
           </fieldset>
-          
+
+          <!-- Gruppe 2b: Mittel für die gewählte Kultur (Pestalozzi/Demeter) -->
+          <fieldset class="calc-fieldset mb-4" data-role="kultur-mittel-fieldset" style="display:none;">
+            <legend class="calc-legend">
+              <i class="bi bi-list-check me-2"></i>Mittel für die Kultur
+            </legend>
+            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+              <span class="calc-hint" data-role="kultur-mittel-info"></span>
+              <div class="ms-auto d-flex gap-2">
+                <button type="button" class="btn btn-psm-secondary-outline btn-sm" data-action="km-select-none">Alle abwählen</button>
+              </div>
+            </div>
+            <div data-role="kultur-mittel-list" class="km-list"></div>
+          </fieldset>
+
           <!-- Gruppe 3: Verwendung, Ort & Zeit -->
           <fieldset class="calc-fieldset mb-4">
             <legend class="calc-legend">
@@ -257,22 +276,6 @@ function createSection(
                 <input type="text" class="form-control calc-input" 
                   id="calc-verwendung" name="calc-verwendung" required 
                   value="${escapeAttr(formDefaults.usageType || "")}" />
-              </div>
-              <div class="col-md-3">
-                <label class="form-label calc-label" for="calc-gps">
-                  ${escapeHtml(labels.calculation.fields.gps.label)}
-                </label>
-                <div class="input-group">
-                  <input type="text" class="form-control calc-input" 
-                    id="calc-gps" name="calc-gps" 
-                    value="${escapeAttr(formDefaults.gps || "")}" />
-                  <button type="button" class="btn btn-psm-secondary-outline btn-sm" data-action="gps-use-active">
-                    <i class="bi bi-geo-alt"></i>
-                  </button>
-                </div>
-                <select class="form-select form-select-sm calc-input-sm mt-1" data-role="gps-point-select">
-                  <option value="">Punkt verknüpfen ...</option>
-                </select>
               </div>
               <div class="col-md-3">
                 <label class="form-label calc-label" for="calc-datum">
@@ -1191,19 +1194,14 @@ export function initCalculation(
   const eppoInput = section.querySelector<HTMLInputElement>("#calc-eppo");
   const bbchInput = section.querySelector<HTMLInputElement>("#calc-bbch");
   const cropInput = section.querySelector<HTMLInputElement>("#calc-kultur");
-  const gpsInput = section.querySelector<HTMLInputElement>("#calc-gps");
+  // Standort-Auswahl (Dropdown) – ersetzt das frühere separate GPS-Feld.
   const gpsSelect = section.querySelector<HTMLSelectElement>(
     '[data-role="gps-point-select"]'
   );
   const gpsHint = section.querySelector<HTMLElement>(
     '[data-role="gps-selection-hint"]'
   );
-  const gpsUseActiveBtn = section.querySelector<HTMLButtonElement>(
-    '[data-action="gps-use-active"]'
-  );
-  const gpsClearBtn = section.querySelector<HTMLButtonElement>(
-    '[data-action="gps-clear-selection"]'
-  );
+  const areaInput = section.querySelector<HTMLInputElement>("#calc-area-ha");
   const profileSelect = section.querySelector<HTMLSelectElement>(
     '[data-role="calc-profile-select"]'
   );
@@ -1218,6 +1216,19 @@ export function initCalculation(
 
   let selectedGpsPointId: string | null = null;
   let activeProfileId: string | null = null;
+  // Kultur → Mittel (Pestalozzi/Demeter)
+  let kulturenList: Array<{
+    kultur: string;
+    anbau: string | null;
+    anzahl: number;
+    eppoCode?: string | null;
+    bbchDefault?: string | null;
+  }> = [];
+  let currentKultur: { kultur: string; anbau: string | null } | null = null;
+  let kulturMittelEntries: any[] = [];
+  const checkedKmIds = new Set<string>();
+  // pro Mittel anpassbare Aufwandmenge (Default = Maximum aus der Liste)
+  const kmAmounts = new Map<string, number>();
 
   const getProfileById = (
     state: AppState,
@@ -1302,10 +1313,23 @@ export function initCalculation(
     }
     const activePoint = getGpsPointById(state, selectedGpsPointId);
     if (activePoint) {
-      gpsHint.textContent = `Koordinaten: ${formatGpsCoordinates(activePoint)}`;
+      const parts: string[] = [];
+      if (activePoint.kind === "gewaechshaus") {
+        parts.push("🏠 Gewächshaus");
+      } else if (activePoint.kind === "freiland") {
+        parts.push("🌱 Freiland");
+      }
+      if (activePoint.nutzflaecheQm != null) {
+        parts.push(`${activePoint.nutzflaecheQm} m²`);
+      }
+      const coords = formatGpsCoordinates(activePoint, "");
+      if (coords) {
+        parts.push(`📍 ${coords}`);
+      }
+      gpsHint.textContent = parts.join("  ·  ");
     } else {
       gpsHint.textContent =
-        "Keine Koordinaten verknüpft. Freitext wird verwendet.";
+        "Standort aus der Liste wählen – GPS wird automatisch übernommen.";
     }
   };
 
@@ -1334,17 +1358,16 @@ export function initCalculation(
     gpsSelect.innerHTML = "";
     const placeholder = document.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = "Gespeicherten Punkt verknüpfen ...";
+    placeholder.textContent = "Standort wählen ...";
     gpsSelect.appendChild(placeholder);
     extractSliceItems<GpsPoint>(state.gps.points).forEach((point) => {
       const option = document.createElement("option");
       option.value = point.id;
-      const coordsLabel = formatGpsCoordinates(point, "");
-      const suffix = point.id === state.gps.activePointId ? " (aktiv)" : "";
       const baseName = point.name?.trim() || "Ohne Namen";
-      option.textContent = coordsLabel
-        ? `${baseName}${suffix} | ${coordsLabel}`
-        : `${baseName}${suffix}`;
+      const areaLabel =
+        point.nutzflaecheQm != null ? ` · ${point.nutzflaecheQm} m²` : "";
+      const suffix = point.id === state.gps.activePointId ? " (aktiv)" : "";
+      option.textContent = `${baseName}${suffix}${areaLabel}`;
       gpsSelect.appendChild(option);
     });
     if (
@@ -1385,34 +1408,19 @@ export function initCalculation(
     const point = getGpsPointById(currentState, choice);
     if (point) {
       setGpsSelection(currentState, point);
-      if (gpsInput && !gpsInput.value.trim()) {
-        const coords = formatGpsCoordinates(point) || point.name || "";
-        gpsInput.value = coords;
-        gpsInput.dispatchEvent(new Event("input", { bubbles: true }));
+      // Nutzfläche des Gewächshauses automatisch als Fläche (ha) übernehmen
+      if (
+        areaInput &&
+        point.nutzflaecheQm != null &&
+        Number.isFinite(point.nutzflaecheQm)
+      ) {
+        const ha = point.nutzflaecheQm / 10000;
+        areaInput.value = String(Number(ha.toFixed(4)));
+        areaInput.dispatchEvent(new Event("input", { bubbles: true }));
       }
     } else {
       clearGpsSelection(currentState);
     }
-  });
-
-  gpsUseActiveBtn?.addEventListener("click", () => {
-    const currentState = services.state.getState();
-    const point = getGpsPointById(currentState, currentState.gps.activePointId);
-    if (!point) {
-      toast.info("Es ist kein aktiver GPS-Punkt festgelegt.");
-      return;
-    }
-    setGpsSelection(currentState, point);
-    if (gpsInput && !gpsInput.value.trim()) {
-      const coords = formatGpsCoordinates(point) || point.name || "";
-      gpsInput.value = coords;
-      gpsInput.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  });
-
-  gpsClearBtn?.addEventListener("click", () => {
-    const currentState = services.state.getState();
-    clearGpsSelection(currentState);
   });
 
   profileSelect?.addEventListener("change", () => {
@@ -1421,6 +1429,230 @@ export function initCalculation(
     const profile = getProfileById(state, selectedId);
     activeProfileId = profile ? profile.id : null;
     updateProfileHint(state);
+  });
+
+  // ---- Kultur → Mittel (Pestalozzi/Demeter) ----
+  const kulturSelect = section.querySelector<HTMLSelectElement>(
+    '[data-role="kultur-select"]'
+  );
+  const kmFieldset = section.querySelector<HTMLElement>(
+    '[data-role="kultur-mittel-fieldset"]'
+  );
+  const kmList = section.querySelector<HTMLElement>(
+    '[data-role="kultur-mittel-list"]'
+  );
+  const kmInfo = section.querySelector<HTMLElement>(
+    '[data-role="kultur-mittel-info"]'
+  );
+  const kmSelectNoneBtn = section.querySelector<HTMLButtonElement>(
+    '[data-action="km-select-none"]'
+  );
+
+  const updateKmInfo = (): void => {
+    if (!kmInfo) return;
+    const total = kulturMittelEntries.length;
+    const checked = kulturMittelEntries.filter((e) =>
+      checkedKmIds.has(e.id)
+    ).length;
+    kmInfo.textContent = total
+      ? `${checked} von ${total} Mitteln ausgewählt – vor der Berechnung anpassbar.`
+      : "Für diese Kultur sind keine Mittel hinterlegt.";
+  };
+
+  const maxAufwand = (e: any): number => {
+    const rawVal = (e.aufwandWert ?? "").toString().replace(/,/g, ".");
+    const nums = (rawVal.match(/\d+(\.\d+)?/g) || []).map(Number);
+    return nums.length ? Math.max(...nums) : 0;
+  };
+
+  const renderKmList = (): void => {
+    if (!kmList) return;
+    if (!kulturMittelEntries.length) {
+      kmList.innerHTML =
+        '<div class="calc-hint">Keine Mittel für diese Kultur hinterlegt.</div>';
+      updateKmInfo();
+      return;
+    }
+    kmList.innerHTML = kulturMittelEntries
+      .map((e) => {
+        const checked = checkedKmIds.has(e.id);
+        const maxv = maxAufwand(e);
+        const amount = kmAmounts.has(e.id) ? kmAmounts.get(e.id) : maxv;
+        const unitLabel = `${escapeHtml(e.aufwandEinheit || "")}${
+          e.aufwandBezug ? "/" + escapeHtml(e.aufwandBezug) : ""
+        }`;
+        const meta = [
+          e.wirkstoff ? escapeHtml(e.wirkstoff) : "",
+          e.wartezeit ? `WZ ${escapeHtml(e.wartezeit)}` : "",
+          e.maxAnwendungen ? escapeHtml(e.maxAnwendungen) : "",
+          !e.kennr ? "kein PSM" : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const problem = e.problem
+          ? `<span class="text-secondary"> – ${escapeHtml(e.problem)}</span>`
+          : "";
+        const cbId = `km-cb-${escapeAttr(e.id)}`;
+        return `
+          <div class="km-row py-2" style="border-bottom:1px solid var(--border-1);">
+            <div class="d-flex align-items-start gap-2">
+              <input type="checkbox" class="form-check-input mt-1" id="${cbId}" data-km-id="${escapeAttr(
+                e.id
+              )}" ${checked ? "checked" : ""} />
+              <label for="${cbId}" style="cursor:pointer; flex:1;">
+                <span class="fw-semibold">${escapeHtml(e.mittelName)}</span>${problem}
+                <span class="d-block calc-hint">${meta}</span>
+              </label>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-1" style="margin-left:1.6rem; display:${
+              checked ? "flex" : "none"
+            };" data-km-amount-row="${escapeAttr(e.id)}">
+              <span class="calc-hint">Aufwandmenge:</span>
+              <input type="number" step="any" min="0" class="form-control form-control-sm"
+                style="max-width:130px;" data-km-amount="${escapeAttr(e.id)}"
+                value="${amount}" />
+              <span class="calc-hint">${unitLabel} · max ${maxv}</span>
+            </div>
+          </div>`;
+      })
+      .join("");
+    kmList
+      .querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-km-id]')
+      .forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const id = cb.getAttribute("data-km-id") || "";
+          const amountRow = kmList.querySelector<HTMLElement>(
+            `[data-km-amount-row="${id}"]`
+          );
+          if (cb.checked) {
+            checkedKmIds.add(id);
+            if (amountRow) amountRow.style.display = "flex";
+            // BVL-zugelassenes BBCH-Stadium dieses Mittels übernehmen (anpassbar)
+            const entry = kulturMittelEntries.find((x) => x.id === id);
+            if (entry && entry.bbch && bbchInput) {
+              bbchInput.value = entry.bbch;
+              bbchInput.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          } else {
+            checkedKmIds.delete(id);
+            if (amountRow) amountRow.style.display = "none";
+          }
+          updateKmInfo();
+        });
+      });
+    kmList
+      .querySelectorAll<HTMLInputElement>("input[data-km-amount]")
+      .forEach((inp) => {
+        inp.addEventListener("input", () => {
+          const id = inp.getAttribute("data-km-amount") || "";
+          const v = parseFloat(inp.value.replace(",", "."));
+          if (Number.isFinite(v)) kmAmounts.set(id, v);
+          else kmAmounts.delete(id);
+        });
+      });
+    updateKmInfo();
+  };
+
+  const loadKulturMittelFor = async (
+    k: { kultur: string; anbau: string | null } | null
+  ): Promise<void> => {
+    checkedKmIds.clear();
+    kmAmounts.clear();
+    kulturMittelEntries = [];
+    if (!k) {
+      if (kmFieldset) kmFieldset.style.display = "none";
+      return;
+    }
+    try {
+      const res = await listKulturMittel({
+        kultur: k.kultur,
+        anbau: k.anbau || undefined,
+      });
+      kulturMittelEntries = (res?.rows || []) as any[];
+    } catch (err) {
+      console.warn("Kultur-Mittel konnten nicht geladen werden:", err);
+      kulturMittelEntries = [];
+    }
+    if (kmFieldset) kmFieldset.style.display = "";
+    renderKmList();
+  };
+
+  const fillKulturSelect = (): void => {
+    if (!kulturSelect) return;
+    const previous = kulturSelect.value;
+    const opts = ['<option value="">Kultur wählen ...</option>'];
+    kulturenList.forEach((k, idx) => {
+      const anbau = k.anbau ? ` (${k.anbau})` : "";
+      opts.push(
+        `<option value="${idx}">${escapeHtml(k.kultur)}${escapeHtml(
+          anbau
+        )} · ${k.anzahl}</option>`
+      );
+    });
+    kulturSelect.innerHTML = opts.join("");
+    if (previous) kulturSelect.value = previous;
+  };
+
+  const refreshKulturen = async (): Promise<void> => {
+    if (getActiveDriverKey() !== "sqlite") return;
+    try {
+      const res = await listKulturen();
+      kulturenList = (res?.rows || []) as any[];
+      fillKulturSelect();
+    } catch (err) {
+      // DB evtl. noch nicht geöffnet – wird beim nächsten Versuch nachgeladen
+    }
+  };
+
+  const kmToCalcMedium = (e: any): any => {
+    // Default = Maximum aus der Liste (Vorgabe Betrieb); vom Nutzer angepasste
+    // Menge im Checklisten-Feld hat Vorrang.
+    const override = kmAmounts.get(e.id);
+    let value =
+      override != null && Number.isFinite(override) ? override : maxAufwand(e);
+    const einheit = e.aufwandEinheit || "";
+    const bezug = e.aufwandBezug || "";
+    let methodId = "perAr";
+    if (einheit === "%" || bezug === "%") {
+      methodId = "percentWater";
+    } else if (bezug === "m²") {
+      value = value * 100; // pro m² -> pro ar
+    }
+    return {
+      id: e.id,
+      name: e.mittelName,
+      unit: einheit,
+      value,
+      methodId,
+      zulassungsnummer: e.kennr || null,
+      wartezeit: e.wartezeit || null,
+      wirkstoff: e.wirkstoff || null,
+    };
+  };
+
+  void refreshKulturen();
+  kulturSelect?.addEventListener("mousedown", () => {
+    if (!kulturenList.length) void refreshKulturen();
+  });
+  kulturSelect?.addEventListener("change", () => {
+    const idxRaw = kulturSelect.value;
+    if (idxRaw === "" || idxRaw == null) {
+      currentKultur = null;
+      void loadKulturMittelFor(null);
+      return;
+    }
+    const k = kulturenList[Number(idxRaw)] || null;
+    currentKultur = k ? { kultur: k.kultur, anbau: k.anbau } : null;
+    // EPPO-Code der Kultur automatisch übernehmen (anpassbar)
+    if (k && k.eppoCode && eppoInput) {
+      eppoInput.value = k.eppoCode;
+      eppoInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    void loadKulturMittelFor(currentKultur);
+  });
+  kmSelectNoneBtn?.addEventListener("click", () => {
+    checkedKmIds.clear();
+    renderKmList();
   });
 
   services.events.subscribe<LookupApplyEppoPayload>(
@@ -1498,14 +1730,13 @@ export function initCalculation(
     const rawErsteller = (formData.get("calc-ersteller") || "")
       .toString()
       .trim();
-    const rawStandort = (formData.get("calc-standort") || "").toString().trim();
-    const rawKultur = (formData.get("calc-kultur") || "").toString().trim();
     const rawAreaHa = (formData.get("calc-area-ha") || "").toString().trim();
     const rawEppo = (formData.get("calc-eppo") || "").toString().trim();
     const rawBbch = (formData.get("calc-bbch") || "").toString().trim();
     const rawInvekos = (formData.get("calc-invekos") || "").toString().trim();
     const rawUsage = (formData.get("calc-verwendung") || "").toString().trim();
-    const rawGps = (formData.get("calc-gps") || "").toString().trim();
+    // GPS-Freitext entfällt – Koordinaten kommen aus dem gewählten Standort
+    const rawGps = "";
     const rawTime = (formData.get("calc-uhrzeit") || "").toString().trim();
     const rawDate = (formData.get("calc-datum") || "").toString().trim();
 
@@ -1513,8 +1744,11 @@ export function initCalculation(
     const qsFields = extractQsFieldsFromForm(form);
 
     const ersteller = rawErsteller;
-    const standort = rawStandort || "-";
-    const kultur = rawKultur || "-";
+    const kultur = currentKultur
+      ? `${currentKultur.kultur}${
+          currentKultur.anbau ? ` (${currentKultur.anbau})` : ""
+        }`
+      : "-";
     const eppoCode = rawEppo;
     const bbch = rawBbch;
     const invekos = rawInvekos;
@@ -1536,30 +1770,38 @@ export function initCalculation(
       return;
     }
 
-    // QS-Felder sind optional - keine Pflichtvalidierung
+    // QS-Felder: im Demeter-Modus Pflicht (Maschine, Schaderreger, Wetter)
+    const qsErrors = validateQsFields(qsFields, true);
+    if (qsErrors.length) {
+      toast.warning(qsErrors.join(" · "));
+      return;
+    }
 
     const state = services.state.getState();
     const defaults = state.defaults;
     const selectedGpsPoint = getGpsPointById(state, selectedGpsPointId);
+    const standort = selectedGpsPoint?.name || "-";
     const gpsCoordinates = selectedGpsPoint
       ? {
           latitude: selectedGpsPoint.latitude,
           longitude: selectedGpsPoint.longitude,
         }
       : null;
-    const formattedGps = selectedGpsPoint
-      ? formatGpsCoordinates(selectedGpsPoint)
-      : "";
-    const gpsDisplayValue = formattedGps || rawGps;
     const mediumMap = new Map(
       extractSliceItems<any>(state.mediums).map((medium: any) => [
         medium.id,
         medium,
       ])
     );
+    const checkedKm = kulturMittelEntries.filter((e) =>
+      checkedKmIds.has(e.id)
+    );
     const activeProfile = getProfileById(state, activeProfileId);
     let mediumsForCalculation: any[];
-    if (activeProfile && activeProfile.mediumIds.length) {
+    if (checkedKm.length) {
+      // Vorrang: die für die gewählte Kultur angehakten Mittel
+      mediumsForCalculation = checkedKm.map(kmToCalcMedium);
+    } else if (activeProfile && activeProfile.mediumIds.length) {
       mediumsForCalculation = activeProfile.mediumIds
         .map((id) => mediumMap.get(id))
         .filter(Boolean) as any[];
@@ -1671,8 +1913,8 @@ export function initCalculation(
           qsBehandlungsart: "",
         }),
         creator: rawErsteller,
-        location: rawStandort,
-        crop: rawKultur,
+        location: standort === "-" ? "" : standort,
+        crop: currentKultur ? currentKultur.kultur : "",
         usageType: rawUsage,
         areaHa: rawAreaHa,
         eppoCode: rawEppo,

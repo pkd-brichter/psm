@@ -964,6 +964,39 @@ export async function getActiveGpsPointId(): Promise<any> {
   return await callWorker("getActiveGpsPointId");
 }
 
+// Kultur → Mittel (Pestalozzi / Demeter)
+export async function listKulturen(): Promise<any> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("listKulturen");
+}
+
+export async function listKulturMittel(
+  payload: { kultur?: string; anbau?: string } = {}
+): Promise<any> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("listKulturMittel", payload);
+}
+
+export async function upsertKulturMittel(payload: any): Promise<any> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("upsertKulturMittel", payload);
+}
+
+export async function deleteKulturMittel(payload: {
+  id: string;
+}): Promise<any> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("deleteKulturMittel", payload);
+}
+
 /**
  * Diagnose BVL schema
  */

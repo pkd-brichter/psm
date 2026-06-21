@@ -16,6 +16,7 @@ import {
   QS_CSS_CLASSES,
   isQsFieldsVisible,
   setQsFieldsVisible,
+  isDemeterMode,
 } from "@scripts/core/qsMode";
 
 /**
@@ -27,28 +28,37 @@ export function renderQsFieldsHtml(
   formDefaults: Partial<QsFieldValues> = {}
 ): string {
   const labels = getQsLabels();
-  const isVisible = isQsFieldsVisible();
+  const demeter = isDemeterMode();
+  const isVisible = demeter || isQsFieldsVisible();
+  const reqStar = demeter ? ` <span class="calc-required">*</span>` : "";
+  const headerHtml = demeter
+    ? `<div class="d-flex align-items-center mb-3">
+          <span class="calc-legend" style="font-size: 0.95rem;">
+            <i class="bi bi-patch-check me-2"></i>QS-Dokumentation <span class="text-muted">(Demeter – Pflicht)</span>
+          </span>
+        </div>`
+    : `<div class="d-flex align-items-center mb-3">
+          <div class="form-check">
+            <input
+              type="checkbox"
+              class="form-check-input"
+              id="qs-fields-toggle"
+              ${isVisible ? "checked" : ""}
+            />
+            <label class="form-check-label text-muted" style="font-size: 0.85rem;" for="qs-fields-toggle">
+              QS-Zertifizierungsfelder anzeigen
+            </label>
+          </div>
+        </div>`;
 
   return `
     <fieldset class="${QS_CSS_CLASSES.container} qs-fields-section calc-fieldset mt-4" style="border-top: 1px solid var(--border-1); padding-top: var(--sp-4);">
-      <div class="d-flex align-items-center mb-3">
-        <div class="form-check">
-          <input 
-            type="checkbox" 
-            class="form-check-input" 
-            id="qs-fields-toggle" 
-            ${isVisible ? "checked" : ""}
-          />
-          <label class="form-check-label text-muted" style="font-size: 0.85rem;" for="qs-fields-toggle">
-            QS-Zertifizierungsfelder anzeigen
-          </label>
-        </div>
-      </div>
+      ${headerHtml}
       <div class="qs-fields-content" style="display: ${isVisible ? "block" : "none"};">
-        <small class="text-muted d-block mb-3">Zusätzliche Dokumentationsfelder gemäß QS-GAP-Leitfaden 3.6.2 (optional)</small>
+        <small class="text-muted d-block mb-3">Dokumentationsfelder gemäß QS-GAP-Leitfaden 3.6.2${demeter ? " – im Demeter-Betrieb Pflicht" : " (optional)"}</small>
         <div class="row g-3 mb-3">
           <div class="col-md-3 ${QS_CSS_CLASSES.field}">
-            <label class="form-label calc-label" for="calc-qs-maschine">${escapeHtml(labels.maschine.label)}</label>
+            <label class="form-label calc-label" for="calc-qs-maschine">${escapeHtml(labels.maschine.label)}${reqStar}</label>
             <input type="text" class="form-control calc-input"
               id="calc-qs-maschine" name="calc-qs-maschine" 
               placeholder="${escapeHtml(labels.maschine.placeholder)}"
@@ -66,7 +76,7 @@ export function renderQsFieldsHtml(
             </datalist>
           </div>
           <div class="col-md-3 ${QS_CSS_CLASSES.field}">
-            <label class="form-label calc-label" for="calc-qs-schaderreger">${escapeHtml(labels.schaderreger.label)}</label>
+            <label class="form-label calc-label" for="calc-qs-schaderreger">${escapeHtml(labels.schaderreger.label)}${reqStar}</label>
             <input type="text" class="form-control calc-input"
               id="calc-qs-schaderreger" name="calc-qs-schaderreger" 
               placeholder="${escapeHtml(labels.schaderreger.placeholder)}"
@@ -82,7 +92,7 @@ export function renderQsFieldsHtml(
               value="${escapeHtml(formDefaults.verantwortlicher || "")}" />
           </div>
           <div class="col-md-3 ${QS_CSS_CLASSES.field}">
-            <label class="form-label calc-label" for="calc-qs-wetter">${escapeHtml(labels.wetter.label)}</label>
+            <label class="form-label calc-label" for="calc-qs-wetter">${escapeHtml(labels.wetter.label)}${reqStar}</label>
             <input type="text" class="form-control calc-input"
               id="calc-qs-wetter" name="calc-qs-wetter" 
               placeholder="${escapeHtml(labels.wetter.placeholder)}"
@@ -315,8 +325,8 @@ export function isQsFieldsToggleChecked(): boolean {
  * Gibt nur Werte zurück wenn die Checkbox aktiviert ist
  */
 export function extractQsFieldsFromForm(form: HTMLFormElement): QsFieldValues {
-  // Nur Werte extrahieren wenn QS-Felder aktiviert sind
-  if (!isQsFieldsToggleChecked()) {
+  // Im Demeter-Modus immer extrahieren; sonst nur wenn die Checkbox aktiv ist
+  if (!isDemeterMode() && !isQsFieldsToggleChecked()) {
     return {
       maschine: "",
       schaderreger: "",

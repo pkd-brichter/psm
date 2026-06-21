@@ -272,7 +272,9 @@ function ensureGpsPointTable(targetDb = db) {
       longitude REAL NOT NULL,
       source TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      nutzflaeche_qm REAL,
+      kind TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_gps_points_created ON gps_points(created_at DESC);
@@ -464,6 +466,8 @@ function mapGpsPointRow(row) {
     source: row.source ?? null,
     created_at: row.created_at || new Date().toISOString(),
     updated_at: row.updated_at || new Date().toISOString(),
+    nutzflaeche_qm: row.nutzflaeche_qm != null ? Number(row.nutzflaeche_qm) : null,
+    kind: row.kind ?? null,
   };
 }
 
@@ -473,7 +477,7 @@ function readGpsPointById(id) {
   }
   let record = null;
   db.exec({
-    sql: `SELECT id, name, description, latitude, longitude, source, created_at, updated_at
+    sql: `SELECT id, name, description, latitude, longitude, source, created_at, updated_at, nutzflaeche_qm, kind
            FROM gps_points
            WHERE id = ?
            LIMIT 1`,
@@ -495,7 +499,7 @@ async function listGpsPoints() {
   ensureGpsPointTable();
   const rows = [];
   db.exec({
-    sql: `SELECT id, name, description, latitude, longitude, source, created_at, updated_at
+    sql: `SELECT id, name, description, latitude, longitude, source, created_at, updated_at, nutzflaeche_qm, kind
           FROM gps_points
           ORDER BY datetime(updated_at) DESC`,
     rowMode: "object",
@@ -632,6 +636,13 @@ async function upsertGpsPoint(payload = {}) {
   const description =
     payload.description != null ? String(payload.description) : null;
   const source = payload.source != null ? String(payload.source) : null;
+  const nutzflaecheRaw =
+    payload.nutzflaecheQm ?? payload.nutzflaeche_qm ?? null;
+  const nutzflaeche =
+    nutzflaecheRaw != null && Number.isFinite(Number(nutzflaecheRaw))
+      ? Number(nutzflaecheRaw)
+      : null;
+  const kind = payload.kind != null ? String(payload.kind) : null;
   const now = new Date().toISOString();
 
   const exists = db.selectValue(
@@ -641,18 +652,18 @@ async function upsertGpsPoint(payload = {}) {
   if (exists) {
     const stmt = db.prepare(
       `UPDATE gps_points
-       SET name = ?, description = ?, latitude = ?, longitude = ?, source = ?, updated_at = ?
+       SET name = ?, description = ?, latitude = ?, longitude = ?, source = ?, nutzflaeche_qm = ?, kind = ?, updated_at = ?
        WHERE id = ?`
     );
-    stmt.bind([name, description, latitude, longitude, source, now, id]);
+    stmt.bind([name, description, latitude, longitude, source, nutzflaeche, kind, now, id]);
     stmt.step();
     stmt.finalize();
   } else {
     const stmt = db.prepare(
-      `INSERT INTO gps_points (id, name, description, latitude, longitude, source, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO gps_points (id, name, description, latitude, longitude, source, created_at, updated_at, nutzflaeche_qm, kind)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    stmt.bind([id, name, description, latitude, longitude, source, now, now]);
+    stmt.bind([id, name, description, latitude, longitude, source, now, now, nutzflaeche, kind]);
     stmt.step();
     stmt.finalize();
   }
@@ -711,6 +722,222 @@ async function getActiveGpsPointId() {
   }
   const activePointId = getMetaValue(GPS_ACTIVE_POINT_META_KEY);
   return { activePointId: activePointId || null };
+}
+
+// ============================================
+// Kultur → Mittel (Pestalozzi / Demeter) Functions
+// ============================================
+
+function ensureKulturMittelTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS kultur_mittel (
+      id TEXT PRIMARY KEY,
+      kultur TEXT NOT NULL,
+      anbau TEXT,
+      problem TEXT,
+      mittel_name TEXT NOT NULL,
+      kennr TEXT,
+      wirkstoff TEXT,
+      eppo_code TEXT,
+      bbch_default TEXT,
+      bbch TEXT,
+      wartezeit TEXT,
+      aufwand_wert TEXT,
+      aufwand_einheit TEXT,
+      aufwand_bezug TEXT,
+      max_anwendungen TEXT,
+      bemerkung TEXT,
+      ist_psm INTEGER NOT NULL DEFAULT 1,
+      ist_kupfer INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kultur_mittel_kultur
+      ON kultur_mittel(kultur, anbau, sort_order);
+  `);
+}
+
+function generateKulturMittelId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `km_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function mapKulturMittelRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    kultur: row.kultur != null ? String(row.kultur) : "",
+    anbau: row.anbau ?? null,
+    problem: row.problem ?? null,
+    mittelName: row.mittel_name != null ? String(row.mittel_name) : "",
+    kennr: row.kennr ?? null,
+    wirkstoff: row.wirkstoff ?? null,
+    eppoCode: row.eppo_code ?? null,
+    bbchDefault: row.bbch_default ?? null,
+    bbch: row.bbch ?? null,
+    wartezeit: row.wartezeit ?? null,
+    aufwandWert: row.aufwand_wert ?? null,
+    aufwandEinheit: row.aufwand_einheit ?? null,
+    aufwandBezug: row.aufwand_bezug ?? null,
+    maxAnwendungen: row.max_anwendungen ?? null,
+    bemerkung: row.bemerkung ?? null,
+    istPsm: row.ist_psm ? 1 : 0,
+    istKupfer: row.ist_kupfer ? 1 : 0,
+    sortOrder: row.sort_order != null ? Number(row.sort_order) : 0,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+async function listKulturen() {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturMittelTable();
+  const rows = [];
+  db.exec({
+    sql: `SELECT kultur, anbau, COUNT(*) AS anzahl,
+                 MAX(eppo_code) AS eppo_code, MAX(bbch_default) AS bbch_default
+          FROM kultur_mittel
+          GROUP BY kultur, anbau
+          ORDER BY kultur COLLATE NOCASE, anbau`,
+    rowMode: "object",
+    callback: (row) => {
+      rows.push({
+        kultur: row.kultur != null ? String(row.kultur) : "",
+        anbau: row.anbau ?? null,
+        anzahl: row.anzahl != null ? Number(row.anzahl) : 0,
+        eppoCode: row.eppo_code ?? null,
+        bbchDefault: row.bbch_default ?? null,
+      });
+    },
+  });
+  return { rows };
+}
+
+async function listKulturMittel(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturMittelTable();
+  const kultur =
+    payload && payload.kultur != null ? String(payload.kultur) : null;
+  const anbau = payload && payload.anbau != null ? String(payload.anbau) : null;
+  const clauses = [];
+  const params = [];
+  if (kultur) {
+    clauses.push("kultur = ?");
+    params.push(kultur);
+  }
+  if (anbau) {
+    clauses.push("anbau = ?");
+    params.push(anbau);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const rows = [];
+  db.exec({
+    sql: `SELECT * FROM kultur_mittel ${where}
+          ORDER BY sort_order, mittel_name COLLATE NOCASE`,
+    bind: params,
+    rowMode: "object",
+    callback: (row) => rows.push(mapKulturMittelRow(row)),
+  });
+  return { rows };
+}
+
+async function upsertKulturMittel(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturMittelTable();
+  const id = String(payload.id || generateKulturMittelId());
+  const kultur = String(payload.kultur ?? "").trim();
+  const mittelName = String(
+    payload.mittelName ?? payload.mittel_name ?? ""
+  ).trim();
+  if (!kultur || !mittelName) {
+    throw new Error("kultur und mittel_name sind erforderlich.");
+  }
+  const now = new Date().toISOString();
+  const v = {
+    anbau: payload.anbau != null ? String(payload.anbau) : null,
+    problem: payload.problem != null ? String(payload.problem) : null,
+    kennr: payload.kennr != null ? String(payload.kennr) : null,
+    wirkstoff: payload.wirkstoff != null ? String(payload.wirkstoff) : null,
+    wartezeit: payload.wartezeit != null ? String(payload.wartezeit) : null,
+    aufwand_wert:
+      payload.aufwandWert ?? payload.aufwand_wert != null
+        ? String(payload.aufwandWert ?? payload.aufwand_wert)
+        : null,
+    aufwand_einheit:
+      payload.aufwandEinheit ?? payload.aufwand_einheit != null
+        ? String(payload.aufwandEinheit ?? payload.aufwand_einheit)
+        : null,
+    aufwand_bezug:
+      payload.aufwandBezug ?? payload.aufwand_bezug != null
+        ? String(payload.aufwandBezug ?? payload.aufwand_bezug)
+        : null,
+    max_anwendungen:
+      payload.maxAnwendungen != null ? String(payload.maxAnwendungen) : null,
+    bemerkung: payload.bemerkung != null ? String(payload.bemerkung) : null,
+    ist_psm:
+      payload.istPsm === 0 || payload.ist_psm === 0 || payload.istPsm === false
+        ? 0
+        : 1,
+    ist_kupfer: payload.istKupfer || payload.ist_kupfer ? 1 : 0,
+    sort_order: Number.isFinite(Number(payload.sortOrder ?? payload.sort_order))
+      ? Number(payload.sortOrder ?? payload.sort_order)
+      : 0,
+  };
+  const exists = db.selectValue(
+    "SELECT 1 FROM kultur_mittel WHERE id = ? LIMIT 1",
+    [id]
+  );
+  if (exists) {
+    const stmt = db.prepare(
+      `UPDATE kultur_mittel SET kultur=?, anbau=?, problem=?, mittel_name=?, kennr=?, wirkstoff=?, wartezeit=?, aufwand_wert=?, aufwand_einheit=?, aufwand_bezug=?, max_anwendungen=?, bemerkung=?, ist_psm=?, ist_kupfer=?, sort_order=?, updated_at=? WHERE id=?`
+    );
+    stmt.bind([
+      kultur, v.anbau, v.problem, mittelName, v.kennr, v.wirkstoff,
+      v.wartezeit, v.aufwand_wert, v.aufwand_einheit, v.aufwand_bezug,
+      v.max_anwendungen, v.bemerkung, v.ist_psm, v.ist_kupfer, v.sort_order,
+      now, id,
+    ]);
+    stmt.step();
+    stmt.finalize();
+  } else {
+    const stmt = db.prepare(
+      `INSERT INTO kultur_mittel (id, kultur, anbau, problem, mittel_name, kennr, wirkstoff, wartezeit, aufwand_wert, aufwand_einheit, aufwand_bezug, max_anwendungen, bemerkung, ist_psm, ist_kupfer, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    stmt.bind([
+      id, kultur, v.anbau, v.problem, mittelName, v.kennr, v.wirkstoff,
+      v.wartezeit, v.aufwand_wert, v.aufwand_einheit, v.aufwand_bezug,
+      v.max_anwendungen, v.bemerkung, v.ist_psm, v.ist_kupfer, v.sort_order,
+      now, now,
+    ]);
+    stmt.step();
+    stmt.finalize();
+  }
+  let record = null;
+  db.exec({
+    sql: "SELECT * FROM kultur_mittel WHERE id = ? LIMIT 1",
+    bind: [id],
+    rowMode: "object",
+    callback: (row) => {
+      if (!record) record = mapKulturMittelRow(row);
+    },
+  });
+  return record;
+}
+
+async function deleteKulturMittel(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturMittelTable();
+  const id = String(payload.id ?? "").trim();
+  if (!id) throw new Error("ID fehlt.");
+  const stmt = db.prepare("DELETE FROM kultur_mittel WHERE id = ?");
+  stmt.bind([id]);
+  stmt.step();
+  stmt.finalize();
+  return { success: true };
 }
 
 // ============================================
@@ -1305,6 +1532,18 @@ self.onmessage = async function (event) {
         break;
       case "getActiveGpsPointId":
         result = await getActiveGpsPointId();
+        break;
+      case "listKulturen":
+        result = await listKulturen();
+        break;
+      case "listKulturMittel":
+        result = await listKulturMittel(payload);
+        break;
+      case "upsertKulturMittel":
+        result = await upsertKulturMittel(payload);
+        break;
+      case "deleteKulturMittel":
+        result = await deleteKulturMittel(payload);
         break;
       case "diagnoseBvlSchema":
         result = await diagnoseBvlSchema();
@@ -2104,6 +2343,109 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 11 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 12: Nutzfläche + Typ für Standorte (gps_points)
+  // (Gewächshäuser haben eine Nutzfläche, Freiland nicht)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const gpsAreaColumnsNeeded =
+    !hasColumn(db, "gps_points", "nutzflaeche_qm") ||
+    !hasColumn(db, "gps_points", "kind");
+  if (gpsAreaColumnsNeeded || postMigrationVersion < 12) {
+    console.log(
+      "Migrating database to version 12 (gps_points Nutzfläche/Typ)..."
+    );
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureGpsPointTable(db);
+      if (!hasColumn(db, "gps_points", "nutzflaeche_qm")) {
+        db.exec("ALTER TABLE gps_points ADD COLUMN nutzflaeche_qm REAL");
+      }
+      if (!hasColumn(db, "gps_points", "kind")) {
+        db.exec("ALTER TABLE gps_points ADD COLUMN kind TEXT");
+      }
+      db.exec("PRAGMA user_version = 12");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 12 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 12 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 13: Kultur → Mittel Tabelle (Pestalozzi/Demeter)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const kulturMittelTableMissing = !hasTable(db, "kultur_mittel");
+  if (kulturMittelTableMissing || postMigrationVersion < 13) {
+    console.log("Migrating database to version 13 (kultur_mittel)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureKulturMittelTable(db);
+      db.exec("PRAGMA user_version = 13");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 13 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 13 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 14: EPPO-Code + BBCH-Default je Kultur in kultur_mittel
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const kulturMittelHasEppo =
+    hasTable(db, "kultur_mittel") && hasColumn(db, "kultur_mittel", "eppo_code");
+  if (!kulturMittelHasEppo || postMigrationVersion < 14) {
+    console.log("Migrating database to version 14 (kultur_mittel EPPO/BBCH)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureKulturMittelTable(db);
+      if (
+        hasTable(db, "kultur_mittel") &&
+        !hasColumn(db, "kultur_mittel", "eppo_code")
+      ) {
+        db.exec("ALTER TABLE kultur_mittel ADD COLUMN eppo_code TEXT");
+      }
+      if (
+        hasTable(db, "kultur_mittel") &&
+        !hasColumn(db, "kultur_mittel", "bbch_default")
+      ) {
+        db.exec("ALTER TABLE kultur_mittel ADD COLUMN bbch_default TEXT");
+      }
+      db.exec("PRAGMA user_version = 14");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 14 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 14 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 15: BVL-BBCH-Stadium je Mittel/Kultur in kultur_mittel
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const kulturMittelHasBbch =
+    hasTable(db, "kultur_mittel") && hasColumn(db, "kultur_mittel", "bbch");
+  if (!kulturMittelHasBbch || postMigrationVersion < 15) {
+    console.log("Migrating database to version 15 (kultur_mittel BBCH)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureKulturMittelTable(db);
+      if (
+        hasTable(db, "kultur_mittel") &&
+        !hasColumn(db, "kultur_mittel", "bbch")
+      ) {
+        db.exec("ALTER TABLE kultur_mittel ADD COLUMN bbch TEXT");
+      }
+      db.exec("PRAGMA user_version = 15");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 15 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 15 failed:", error);
       throw error;
     }
   }

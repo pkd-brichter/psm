@@ -35,6 +35,16 @@
         }
       },
       {
+        "id": "perAr",
+        "label": "pro Ar",
+        "type": "factor",
+        "unit": "ar",
+        "requires": ["areaAr"],
+        "config": {
+          "sourceField": "areaAr"
+        }
+      },
+      {
         "id": "percentWater",
         "label": "% vom Wasser",
         "type": "percentOf",

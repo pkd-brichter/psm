@@ -76,6 +76,10 @@ export interface GpsPoint {
   latitude: number;
   longitude: number;
   source?: string | null;
+  /** Nutzfläche in m² (nur Gewächshäuser; Freiland = null) */
+  nutzflaecheQm?: number | null;
+  /** Standort-Typ, z. B. "gewaechshaus" | "freiland" */
+  kind?: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -111,9 +111,24 @@ const DEFAULT_QS_LABELS: QsFieldLabels = {
   },
 };
 
+// Pestalozzi ist ein Demeter-/Bio-Betrieb: die QS-Dokumentationsfelder sind
+// PFLICHT und immer sichtbar.
+export const DEMETER_MODE = true;
+
+/** Pflicht-QS-Felder im Demeter-Modus */
+export const QS_REQUIRED_FIELDS: Array<keyof QsFieldValues> = [
+  "maschine",
+  "schaderreger",
+  "wetter",
+];
+
+export function isDemeterMode(): boolean {
+  return DEMETER_MODE;
+}
+
 let qsConfig: QsConfig = {
   enabled: true, // QS-Felder immer verfügbar
-  strictValidation: false, // Felder optional, nicht Pflicht
+  strictValidation: DEMETER_MODE, // Demeter: QS-Felder sind Pflicht
 };
 
 let qsLabels: QsFieldLabels = { ...DEFAULT_QS_LABELS };
@@ -136,6 +151,10 @@ export function initQsMode(): void {
  * Standardmäßig AUSGEBLENDET für übersichtliche UI
  */
 export function isQsFieldsVisible(): boolean {
+  // Demeter-Betrieb: QS-Felder sind Pflicht und immer sichtbar.
+  if (DEMETER_MODE) {
+    return true;
+  }
   try {
     const stored = localStorage.getItem(QS_FIELDS_VISIBLE_KEY);
     // Standardmäßig false (ausgeblendet) für saubere UI
@@ -218,17 +237,19 @@ export function validateQsFields(
 
   const errors: string[] = [];
 
-  // Nur bei explizit aktivierter strenger Validierung
+  // Nur bei explizit aktivierter strenger Validierung (Demeter)
   if (strict || qsConfig.strictValidation) {
-    if (!fields.maschine?.trim()) {
-      errors.push(
-        "Maschine/Gerät ist für vollständige QS-Dokumentation empfohlen"
-      );
-    }
-    if (!fields.schaderreger?.trim()) {
-      errors.push(
-        "Schaderreger/Grund ist für vollständige QS-Dokumentation empfohlen"
-      );
+    const messages: Record<keyof QsFieldValues, string> = {
+      maschine: "Maschine/Gerät ist Pflicht (QS/Demeter)",
+      schaderreger: "Schaderreger/Grund ist Pflicht (QS/Demeter)",
+      wetter: "Wetterbedingungen sind Pflicht (QS/Demeter)",
+      verantwortlicher: "Verantwortliche Person ist Pflicht (QS/Demeter)",
+      behandlungsart: "Behandlungsart ist Pflicht (QS/Demeter)",
+    };
+    for (const key of QS_REQUIRED_FIELDS) {
+      if (!fields[key]?.trim()) {
+        errors.push(messages[key]);
+      }
     }
   }
 
