@@ -1,8 +1,10 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
+  # Auto-Deploy deaktiviert (2026-06-21): GitHub Pages ist im Org-Repo noch
+  # nicht eingerichtet und base="/" ist für eine Root-Domain gebaut. Erst
+  # manuell auslösen, wenn Pages/Domain konfiguriert ist (sonst schlägt der
+  # Deploy-Schritt bei jedem Push fehl).
   workflow_dispatch:
 
 permissions:
