@@ -15,88 +15,89 @@
      HINTERGRUND-SYSTEM
      ══════════════════════════════════════════════════════════════════════ */
 
-  /* App-Gradient (Nach Start-Dialog, ohne Foto) */
+  /* App-Gradient (Nach Start-Dialog, ohne Foto) – HELL, tageslichttauglich */
   --app-bg: radial-gradient(
     ellipse 120% 80% at 50% -10%,
-    #1e3a5f 0%,
-    #081019 60%
+    #ffffff 0%,
+    #e9eff5 65%
   );
 
-  /* Basis-Hintergründe */
-  --bg-0: #0b1620; /* Tiefster Hintergrund */
-  --bg-1: #0e1d2a; /* Body-Fallback */
-  --bg-2: #112b3a; /* Gradient-End */
+  /* Basis-Hintergründe (hell) */
+  --bg-0: #e6ecf2; /* Tiefster Hintergrund */
+  --bg-1: #f4f7fa; /* Body-Fallback */
+  --bg-2: #ffffff; /* Gradient-End / hellste Fläche */
 
-  /* Oberflächen-Stufen (Cards, Panels, etc.) – angehoben */
-  --surface-1: #122433; /* Karten, Panels */
-  --surface-2: #162c3e; /* Erhöhte Flächen */
-  --surface-3: #1b3448; /* Hover-States, aktive Elemente */
+  /* Oberflächen-Stufen (Cards, Panels, etc.) */
+  --surface-1: #ffffff; /* Karten, Panels */
+  --surface-2: #f1f5f9; /* Erhöhte Flächen */
+  --surface-3: #e4ebf1; /* Hover-States, aktive Elemente */
 
   /* ══════════════════════════════════════════════════════════════════════
      RAHMEN
      ══════════════════════════════════════════════════════════════════════ */
 
-  --border-1: #2a3f52; /* Standard-Rahmen */
-  --border-2: #36536b; /* Aktive/Fokus-Rahmen */
+  --border-1: #d3dce4; /* Standard-Rahmen */
+  --border-2: #b3c1ce; /* Aktive/Fokus-Rahmen */
 
   /* ══════════════════════════════════════════════════════════════════════
-     TEXT-HIERARCHIE (optimiert für Tageslicht-Lesbarkeit)
+     TEXT-HIERARCHIE (dunkel auf hell – hoher Kontrast für Tageslicht)
      ══════════════════════════════════════════════════════════════════════ */
 
-  --text: #e6f0f6; /* Primärer Text */
-  --text-muted: #a6b5c2; /* Sekundärer Text */
-  --text-dim: #7e93a4; /* Tertiärer Text (Labels, Hints) */
+  --text: #152230; /* Primärer Text (fast schwarz, slate) */
+  --text-muted: #45566a; /* Sekundärer Text */
+  --text-dim: #687889; /* Tertiärer Text (Labels, Hints) */
 
   /* ══════════════════════════════════════════════════════════════════════
      NAV/TABS – Subtil statt vollflächig grün
      ══════════════════════════════════════════════════════════════════════ */
 
-  --nav-active-bg: rgba(34, 197, 94, 0.14); /* Primary-Tint für aktive Nav */
-  --nav-active-border: rgba(34, 197, 94, 0.35);
-  --tab-active-underline: rgba(34, 197, 94, 0.75);
+  --nav-active-bg: rgba(22, 163, 74, 0.12); /* Primary-Tint für aktive Nav */
+  --nav-active-border: rgba(22, 163, 74, 0.45);
+  --tab-active-underline: rgba(22, 163, 74, 0.85);
 
   /* ══════════════════════════════════════════════════════════════════════
      SEMANTISCHE FARBEN
      ══════════════════════════════════════════════════════════════════════ */
 
-  /* Primary (Grün) – Hauptaktionen: Berechnen, Speichern, OK */
-  --primary-600: #22c55e;
-  --primary-hover: #16a34a;
-  --primary-subtle: rgba(34, 197, 94, 0.18);
+  /* Primary (Grün) – Hauptaktionen: Berechnen, Speichern, OK
+     Auf Hell etwas kräftiger/dunkler für lesbaren weißen Text. */
+  --primary-600: #16a34a;
+  --primary-hover: #15803d;
+  --primary-subtle: rgba(22, 163, 74, 0.14);
 
-  /* Info (Cyan) – Prüfen, Import, Hinweise */
-  --info-600: #22d3ee;
-  --info-hover: #0e9fb8;
-  --info-subtle: rgba(34, 211, 238, 0.15);
+  /* Info (Cyan/Blau) – Prüfen, Import, Hinweise */
+  --info-600: #0891b2;
+  --info-hover: #0e7490;
+  --info-subtle: rgba(8, 145, 178, 0.12);
 
   /* Warning (Amber) – Archiv, Achtung */
-  --warning-600: #fbbf24;
-  --warning-hover: #d97706;
-  --warning-subtle: rgba(251, 191, 36, 0.15);
-  --warning-text: #1a1a1a; /* Dunkler Text auf Warning-Buttons */
+  --warning-600: #d97706;
+  --warning-hover: #b45309;
+  --warning-subtle: rgba(217, 119, 6, 0.14);
+  --warning-text: #ffffff; /* Weißer Text auf Amber-Button (dunkles Amber) */
 
   /* Danger (Rot) – Löschen, Fehler */
-  --danger-600: #ef4444;
-  --danger-hover: #dc2626;
-  --danger-subtle: rgba(239, 68, 68, 0.15);
+  --danger-600: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-subtle: rgba(220, 38, 38, 0.12);
 
   /* Neutral (für sekundäre Aktionen, Ghost-Buttons) */
   --neutral-600: #64748b;
   --neutral-hover: #475569;
-  --neutral-subtle: rgba(100, 116, 139, 0.15);
+  --neutral-subtle: rgba(100, 116, 139, 0.12);
 
   /* ══════════════════════════════════════════════════════════════════════
      FOKUS-RING
      ══════════════════════════════════════════════════════════════════════ */
 
-  --focus-ring: 0 0 0 3px rgba(34, 197, 94, 0.4);
-  --focus-color: #6ee7b7;
+  --focus-ring: 0 0 0 3px rgba(22, 163, 74, 0.35);
+  --focus-color: #15803d;
 
   /* ══════════════════════════════════════════════════════════════════════
      OVERLAY
      ══════════════════════════════════════════════════════════════════════ */
 
-  --overlay: rgba(0, 0, 0, 0.55);
+  --overlay: rgba(15, 23, 42, 0.45);
 
   /* ══════════════════════════════════════════════════════════════════════
      LAYOUT-TOKENS
@@ -119,9 +120,9 @@
   --sp-6: 1.5rem; /* 24px */
   --sp-8: 2rem; /* 32px */
 
-  /* Schatten (nach User-Vorgabe) */
-  --shadow-1: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-2: 0 14px 40px rgba(0, 0, 0, 0.45);
+  /* Schatten – auf Hell dezent (sonst „schmutzig") */
+  --shadow-1: 0 1px 3px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 8px 24px rgba(16, 24, 40, 0.12);
 
   /* ══════════════════════════════════════════════════════════════════════
      START-DIALOG OVERLAY
@@ -209,7 +210,7 @@
   --shadow-sm: var(--shadow-1);
   --shadow-md: var(--shadow-1);
   --shadow-lg: var(--shadow-2);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 16px 48px rgba(16, 24, 40, 0.16);
   --shadow-focus: var(--focus-ring);
   --shadow-focus-danger: 0 0 0 3px rgba(239, 68, 68, 0.4);
 
@@ -231,10 +232,10 @@
   --table-bg: var(--surface-1);
   --table-header-bg: var(--surface-2);
   --table-border: var(--border-1);
-  --table-row-hover: rgba(255, 255, 255, 0.03); /* Subtiler Hover */
+  --table-row-hover: rgba(15, 23, 42, 0.04); /* Subtiler Hover (dunkel auf hell) */
   --table-row-height: 48px; /* Mehr Luft pro Zeile */
   --footer-bg: var(--surface-1);
-  --footer-shadow: 0 -2px 8px rgba(0, 0, 0, 0.2);
+  --footer-shadow: 0 -1px 4px rgba(16, 24, 40, 0.08);
 
   /* ══════════════════════════════════════════════════════════════════════
      TYPOGRAFIE

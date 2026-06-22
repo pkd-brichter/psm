@@ -43,6 +43,42 @@ export function initAcker(container: Element | null, services: Services): void {
   const fields: any[] = [];
   let selId: string | null = null;
   const saveTimers = new Map<string, any>();
+  let standorteLayer: any = null;
+
+  // Vorhandene Freiland-Standorte (aus GPS-Punkten: Name + Koordinaten + Fläche)
+  // als Marker auf der Karte anzeigen.
+  function renderStandorte(): void {
+    if (!L || !standorteLayer) return;
+    standorteLayer.clearLayers();
+    const points = extractSliceItems<any>(services.state.getState().gps?.points) || [];
+    points.forEach((p: any) => {
+      const lat = Number(p.latitude);
+      const lng = Number(p.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const areaQm = Number(p.nutzflaecheQm);
+      const areaTxt = Number.isFinite(areaQm) && areaQm > 0 ? `${Math.round(areaQm)} m²` : "";
+      const name = p.name || "Standort";
+      const marker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: "acker-standort",
+          html: '<span class="acker-standort-dot"></span>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        }),
+      });
+      marker.bindTooltip(
+        `${escapeHtml(name)}${areaTxt ? " · " + areaTxt : ""}`,
+        { permanent: true, direction: "top", className: "acker-standort-label", offset: [0, -9] }
+      );
+      const popupRows = [
+        `<b>${escapeHtml(name)}</b>`,
+        areaTxt ? `Fläche: ${areaTxt}` : "",
+        p.kind ? escapeHtml(String(p.kind)) : "",
+      ].filter(Boolean).join("<br>");
+      marker.bindPopup(popupRows);
+      standorteLayer.addLayer(marker);
+    });
+  }
 
   const el = (sel: string) => container.querySelector(sel) as HTMLElement | null;
   const listEl = el('[data-role="acker-list"]');
@@ -331,7 +367,15 @@ export function initAcker(container: Element | null, services: Services): void {
     const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles © Esri" }).addTo(map);
     const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
-    L.control.layers({ Satellit: sat, "Karte (OSM)": osm }, {}, { position: "topright" }).addTo(map);
+    // Vorhandene Freiland-Standorte (Name + Koordinaten + Fläche) als Marker-Layer
+    standorteLayer = L.layerGroup();
+    renderStandorte();
+    standorteLayer.addTo(map);
+    L.control.layers(
+      { Satellit: sat, "Karte (OSM)": osm },
+      { "Freiland-Standorte": standorteLayer },
+      { position: "topright" }
+    ).addTo(map);
     map.on("click", onMapClick);
 
     el('[data-role="acker-draw"]')!.addEventListener("click", () => setDraw(true));
@@ -417,6 +461,9 @@ function renderShell(): string {
     .acker-res .r b{color:#22c55e}
     .acker-actions{display:flex;justify-content:space-between;margin-top:10px;gap:8px}
     .acker-vhandle{background:#fff;border:2px solid #15803d;border-radius:50%;width:12px!important;height:12px!important;margin-left:-6px!important;margin-top:-6px!important;cursor:grab}
+    .acker-standort-dot{display:block;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+    .acker-standort-label{background:rgba(255,255,255,.92);color:#1f2937;border:1px solid #d97706;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+    .acker-standort-label::before{display:none}
     @media(max-width:760px){.acker-wrap{flex-direction:column;height:auto}.acker-side{width:100%;max-height:46vh}.acker-map{height:52vh}}
   </style>
   <section class="calc-section">

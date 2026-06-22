@@ -10,8 +10,8 @@
   --color-surface-alt: var(--surface-2);
   --color-accent: var(--primary-600);
   --color-navbar: var(--surface-1);
-  --color-card-shadow: rgba(0, 0, 0, 0.35);
-  --color-footer-shadow: rgba(0, 0, 0, 0.2);
+  --color-card-shadow: rgba(16, 24, 40, 0.1);
+  --color-footer-shadow: rgba(16, 24, 40, 0.08);
 }
 
 * {
@@ -44,28 +44,18 @@ body {
 /* Startup-Modus: Hintergrundfoto mit freundlicherem Overlay
    WICHTIG: Bild wird hier DIREKT eingebunden (nicht über CSS-Variable)
    damit es NUR geladen wird wenn .bg-startup aktiv ist! */
+/* Start-Dialog: heller, ruhiger Verlauf (passend zum hellen App-Theme). */
 body.bg-startup {
-  background:
-    linear-gradient(
-      180deg,
-      var(--start-overlay-top) 0%,
-      var(--start-overlay-mid) 40%,
-      var(--start-overlay-bot) 100%
-    ),
-    url("/assets/img/fields.jpg") center / cover no-repeat fixed;
+  background: var(--app-bg);
   background-color: var(--bg-0);
 }
 
-/* Spezielle hellere Card für den Start-Dialog (Glasmorphism) */
+/* Start-Dialog-Karte: helle Karte mit dunklem Text. */
 .startup-card {
-  background: var(--start-overlay-bg);
-  -webkit-backdrop-filter: blur(var(--start-overlay-blur));
-  backdrop-filter: blur(var(--start-overlay-blur));
-  border: 1px solid var(--start-overlay-border);
+  background: var(--surface-1);
+  border: 1px solid var(--color-border);
   border-radius: var(--r-lg);
-  box-shadow:
-    var(--shadow-2),
-    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  box-shadow: var(--shadow-2);
   color: var(--text);
 }
 

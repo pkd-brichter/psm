@@ -16,6 +16,17 @@
 }
 
 .table-dark {
+  /* Bootstrap-Tabellen-Variablen auf Hell überschreiben (sonst dunkle Zellen,
+     da Bootstraps eigene Zell-Regeln diese Variablen mit hoher Spezifität nutzen). */
+  --bs-table-color: var(--text);
+  --bs-table-bg: var(--surface-1);
+  --bs-table-border-color: var(--border-1);
+  --bs-table-striped-bg: var(--surface-2);
+  --bs-table-striped-color: var(--text);
+  --bs-table-active-bg: var(--surface-3);
+  --bs-table-active-color: var(--text);
+  --bs-table-hover-bg: var(--table-row-hover);
+  --bs-table-hover-color: var(--text);
   background-color: var(--table-bg, var(--surface-1));
   color: var(--text);
   border-collapse: separate;
@@ -33,13 +44,13 @@
 }
 
 .table-dark tbody tr {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06); /* Subtilere Lines */
+  border-bottom: 1px solid var(--color-border); /* Subtilere Lines */
 }
 
 .table-dark th,
 .table-dark td {
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--color-border);
   background-color: transparent;
   padding: 0.75rem 1rem; /* Mehr Luft */
   min-height: var(--table-row-height, 48px);
@@ -620,7 +631,7 @@ html.qs-mode .card-dark {
   background-color: var(--color-surface);
   border: 1px solid var(--color-accent);
   border-radius: 0 0 0.5rem 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.12);
   margin-top: -1px;
 }
 
@@ -634,7 +645,7 @@ html.qs-mode .card-dark {
   padding: 0.5rem 0.75rem;
   background-color: rgba(47, 158, 68, 0.15);
   border-bottom: 1px solid var(--color-border);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-muted);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -648,7 +659,7 @@ html.qs-mode .card-dark {
   padding: 0.625rem 0.75rem;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--color-border);
   color: var(--color-text-body);
   font-size: 0.9375rem;
   text-align: left;
@@ -713,7 +724,7 @@ html.qs-mode .card-dark {
 
 .codes-manager-tabs .nav-link:hover {
   color: var(--text);
-  border-bottom-color: rgba(255, 255, 255, 0.2);
+  border-bottom-color: var(--border-2);
 }
 
 .codes-manager-tabs .nav-link.active {
@@ -753,7 +764,7 @@ html.qs-mode .card-dark {
 }
 
 .saved-code-item .code-name {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text);
 }
 
 .saved-code-item .code-actions {
@@ -764,7 +775,7 @@ html.qs-mode .card-dark {
 .saved-code-item .favorite-btn {
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-dim);
   cursor: pointer;
   padding: 0.25rem 0.5rem;
   font-size: 1rem;
@@ -778,7 +789,7 @@ html.qs-mode .card-dark {
 .saved-code-item .delete-btn {
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-dim);
   cursor: pointer;
   padding: 0.25rem 0.5rem;
 }
@@ -839,7 +850,7 @@ html.qs-mode .card-dark {
 
 .settings-tabs .nav-link:hover {
   color: var(--text);
-  background-color: rgba(255, 255, 255, 0.04);
+  background-color: var(--surface-2);
 }
 
 .settings-tabs .nav-link.active {

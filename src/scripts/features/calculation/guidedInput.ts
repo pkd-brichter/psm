@@ -96,7 +96,7 @@ export function setGuidedInputEnabled(enabled: boolean): void {
 export function renderGuidedInputToggle(): string {
   const isEnabled = isGuidedInputEnabled();
   return `
-    <div class="guided-input-toggle mb-3 p-2 bg-dark rounded border border-secondary">
+    <div class="guided-input-toggle mb-3 p-2 bg-body-tertiary rounded border">
       <div class="form-check">
         <input 
           type="checkbox" 

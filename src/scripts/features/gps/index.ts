@@ -707,7 +707,7 @@ function renderPointRows(points: GpsPoint[], activeId: string | null): string {
         ? `<div class="text-muted small">${escapeHtml(point.description)}</div>`
         : "";
       const source = point.source
-        ? `<span class="badge bg-dark border border-secondary">${escapeHtml(point.source)}</span>`
+        ? `<span class="badge-psm badge-psm-neutral">${escapeHtml(point.source)}</span>`
         : '<span class="text-muted">–</span>';
       const activeBadge = isActive
         ? '<span class="badge bg-success ms-2">Aktiv</span>'

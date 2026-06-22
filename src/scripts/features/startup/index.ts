@@ -259,10 +259,10 @@ export function initStartup(
           <div style="position: absolute; top: 0.75rem; right: 0.75rem;">
             ${
               showContinueFocus
-                ? `<button class="btn btn-link p-0" style="color: rgba(255,255,255,0.5); text-decoration: none; font-size: 0.85rem;" data-action="start-wizard">
+                ? `<button class="btn btn-link p-0" style="color: var(--text-muted); text-decoration: none; font-size: 0.85rem;" data-action="start-wizard">
                   <i class="bi bi-plus-lg me-1"></i>Neu erstellen
                 </button>`
-                : `<button class="btn btn-link p-0" style="color: rgba(255,255,255,0.5); text-decoration: none; font-size: 0.85rem;" data-action="open">
+                : `<button class="btn btn-link p-0" style="color: var(--text-muted); text-decoration: none; font-size: 0.85rem;" data-action="open">
                   <i class="bi bi-folder2-open me-1"></i>Datei öffnen
                 </button>`
             }
@@ -270,13 +270,13 @@ export function initStartup(
           
           <!-- Info & Lizenz + Statistik Links unten links -->
           <div style="position: absolute; bottom: 0.75rem; left: 0.75rem; display: flex; gap: 1rem; align-items: center;">
-            <a href="https://info.digitale-psm.de" target="_blank" rel="noopener noreferrer" style="color: rgba(255,255,255,0.5); text-decoration: none; font-size: 0.8rem; transition: color 0.2s;">
+            <a href="https://info.digitale-psm.de" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.2s;">
               <i class="bi bi-info-circle me-1"></i>Info & Lizenz
             </a>
-            <a href="https://st.digitale-psm.de" target="_blank" rel="noopener noreferrer" style="color: rgba(255,255,255,0.5); text-decoration: none; font-size: 0.8rem; transition: color 0.2s;">
+            <a href="https://st.digitale-psm.de" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; transition: color 0.2s;">
               <i class="bi bi-bar-chart-line me-1"></i>Statistik
             </a>
-            <span id="startup-view-counter" style="color: rgba(255,255,255,0.35); font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+            <span id="startup-view-counter" style="color: var(--text-dim); font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;">
               <i class="bi bi-eye"></i>
               <span data-role="view-count">–</span>
             </span>
@@ -294,15 +294,15 @@ export function initStartup(
                 
                 <!-- Fortsetzen Banner -->
                 <div id="auto-start-banner" class="mb-4 p-4 rounded-3" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3);">
-                  <p class="mb-2" style="color: rgba(255,255,255,0.6); font-size: 0.85rem;">
+                  <p class="mb-2" style="color: var(--text-muted); font-size: 0.85rem;">
                     <i class="bi bi-clock-history me-1"></i>Zuletzt verwendet
                   </p>
-                  <p class="mb-3" style="color: #fff; font-size: 1.1rem; font-weight: 500;" data-role="auto-start-filename"></p>
+                  <p class="mb-3" style="color: var(--text); font-size: 1.1rem; font-weight: 500;" data-role="auto-start-filename"></p>
                   <div class="d-flex justify-content-center align-items-center gap-2">
                     <button class="btn btn-lg px-5 py-3" style="background: #3b82f6; color: #fff; font-weight: 600; font-size: 1.1rem; border: none;" data-action="auto-start">
                       <i class="bi bi-arrow-right-circle-fill me-2"></i>Fortsetzen
                     </button>
-                    <button class="btn px-2 py-2" style="background: transparent; color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.15);" data-action="auto-start-forget" title="Aus Liste entfernen">
+                    <button class="btn px-2 py-2" style="background: transparent; color: var(--text-dim); border: 1px solid var(--color-border);" data-action="auto-start-forget" title="Aus Liste entfernen">
                       <i class="bi bi-x-lg"></i>
                     </button>
                   </div>
@@ -310,7 +310,7 @@ export function initStartup(
                 
                 <!-- Sekundär: Andere Datei öffnen -->
                 <div class="d-flex justify-content-center">
-                  <button class="btn px-4 py-2" style="background: transparent; color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.2); font-size: 0.9rem;" data-action="open">
+                  <button class="btn px-4 py-2" style="background: transparent; color: var(--text-muted); border: 1px solid var(--color-border); font-size: 0.9rem;" data-action="open">
                     <i class="bi bi-folder2-open me-2"></i>Andere Datei öffnen
                   </button>
                 </div>`
@@ -330,7 +330,7 @@ export function initStartup(
                 
                 <!-- Sekundär: Datei öffnen -->
                 <div class="d-flex justify-content-center">
-                  <button class="btn px-4 py-2" style="background: transparent; color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.2); font-size: 0.9rem;" data-action="open">
+                  <button class="btn px-4 py-2" style="background: transparent; color: var(--text-muted); border: 1px solid var(--color-border); font-size: 0.9rem;" data-action="open">
                     <i class="bi bi-folder2-open me-2"></i>Bestehende Datei öffnen
                   </button>
                 </div>`
@@ -338,7 +338,7 @@ export function initStartup(
             
             <!-- PWA Banner - nur wenn nicht in App -->
             <div id="pwa-install-banner" class="${inApp ? "d-none" : "d-none"} mt-4">
-              <hr class="my-3" style="border-color: rgba(255,255,255,0.1);" />
+              <hr class="my-3" style="border-color: var(--color-border);" />
               <div data-role="pwa-content">
                 <!-- Wird dynamisch gefüllt -->
               </div>
@@ -813,7 +813,7 @@ export function initStartup(
         <p class="small mb-2" style="color: var(--text-muted);">
           <i class="bi bi-check-circle text-success me-1"></i>App ist bereits installiert
         </p>
-        <p class="small mb-0" style="color: rgba(255,255,255,0.5);">
+        <p class="small mb-0" style="color: var(--text-muted);">
           Öffne die App über dein Desktop- oder Startmenü-Symbol für die beste Erfahrung.
         </p>
       `;

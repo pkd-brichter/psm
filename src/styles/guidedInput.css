@@ -332,7 +332,7 @@
 .calc-input.has-value {
   background: var(--surface-2);
   border-left: 3px solid var(--primary-600);
-  color: #fff;
+  color: var(--text);
   font-weight: 500;
 }
 
