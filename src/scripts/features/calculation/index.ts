@@ -35,7 +35,7 @@ import {
 } from "../shared/mediumTable";
 import type { CalculationSnapshotEntry } from "../shared/calculationSnapshot";
 import {
-  printEntriesChunked,
+  printEntriesSafe,
   buildCompanyPrintHeader,
 } from "../shared/printing";
 import {
@@ -1892,7 +1892,7 @@ export function initCalculation(
       formatDateFromIso(entry?.dateIso) ||
       entry?.date ||
       new Date().toLocaleDateString("de-DE");
-    await printEntriesChunked([entry], state.fieldLabels, {
+    await printEntriesSafe([entry], state.fieldLabels, {
       title: `Berechnung – ${titleDate}`,
       headerHtml,
       chunkSize: 1,

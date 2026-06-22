@@ -3,7 +3,9 @@ import {
   PRINT_PAGE_LAYOUT_STYLES,
   PRINT_BRAND_FOOTER_STYLES,
   buildPrintBrandFooter,
+  printOverlay,
 } from "@scripts/core/print";
+import { isMobileClient } from "@scripts/core/platform";
 import {
   renderCalculationSnapshotForPrint,
   type CalculationSnapshotEntry,
@@ -145,6 +147,35 @@ type PrintOptions = {
   headerHtml?: string;
   additionalStyles?: string;
 };
+
+/**
+ * Mobil-sicheres Drucken/PDF: auf Touch-Geräten (iOS Safari druckt versteckte
+ * iframes NICHT) über das Overlay des aktuellen Dokuments, sonst der bewährte
+ * iframe-Weg am Desktop. Für Berechnung & Mobile-Erfassung verwenden.
+ */
+export async function printEntriesSafe(
+  entries: CalculationSnapshotEntry[],
+  labels: CalculationSnapshotLabels,
+  options: PrintOptions = {},
+): Promise<void> {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error("No entries to print");
+  }
+  if (isMobileClient()) {
+    const { title = "Druck", headerHtml = "", additionalStyles = "" } = options;
+    const snapshots = entries
+      .map((e) => renderCalculationSnapshotForPrint(e, labels))
+      .join("");
+    const content = `${headerHtml}<div class="calc-snapshots-container">${snapshots}</div>`;
+    printOverlay({
+      title,
+      styles: PRINT_BASE_STYLES + (additionalStyles || ""),
+      content,
+    });
+    return;
+  }
+  await printEntriesChunked(entries, labels, options);
+}
 
 export async function printEntriesChunked(
   entries: CalculationSnapshotEntry[],

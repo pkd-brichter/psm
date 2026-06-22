@@ -29,6 +29,15 @@ import { initToastContainer, toast } from "@scripts/core/toast";
 import { initCalculation } from "@scripts/features/calculation";
 import { shareMobileData, getDeviceLabel } from "@scripts/features/share";
 import { getUnsharedCount, setUnsharedCount } from "@scripts/features/share/unshared";
+import {
+  listHistoryEntries,
+  getHistoryEntryById,
+} from "@scripts/core/storage/sqlite";
+import {
+  printEntriesSafe,
+  buildCompanyPrintHeader,
+} from "@scripts/features/shared/printing";
+import { escapeHtml, formatDateFromIso } from "@scripts/core/utils";
 
 let started = false;
 
@@ -48,6 +57,74 @@ function renderShareStatus(): void {
       <button type="button" class="m-share-btn" disabled>
         <i class="bi bi-share"></i> Teilen
       </button>`;
+  }
+}
+
+function entryDateLabel(e: any): string {
+  return (
+    e?.datum ||
+    formatDateFromIso(e?.dateIso) ||
+    e?.date ||
+    e?.savedAt?.slice(0, 10) ||
+    ""
+  );
+}
+
+async function loadRecent(): Promise<void> {
+  const host = document.querySelector<HTMLElement>('[data-role="m-recent-list"]');
+  if (!host) return;
+  try {
+    const res = await listHistoryEntries({
+      page: 1,
+      pageSize: 10,
+      sortDirection: "desc",
+    });
+    const items = (res?.items || []) as any[];
+    if (!items.length) {
+      host.innerHTML =
+        '<p class="m-recent-empty">Noch keine Erfassungen gespeichert.</p>';
+      return;
+    }
+    host.innerHTML = items
+      .map((e) => {
+        const date = entryDateLabel(e);
+        const title = [e.kultur, e.ersteller].filter(Boolean).join(" · ");
+        return `
+          <div class="m-recent-item">
+            <div class="m-recent-info">
+              <span class="m-recent-date">${escapeHtml(date)}</span>
+              <span class="m-recent-title">${escapeHtml(title || "Erfassung")}</span>
+            </div>
+            <button type="button" class="m-pdf-btn" data-entry-id="${escapeHtml(
+              String(e.id)
+            )}">
+              <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+          </div>`;
+      })
+      .join("");
+  } catch (err) {
+    console.warn("[Mobil] Letzte Erfassungen konnten nicht geladen werden", err);
+  }
+}
+
+async function printEntry(id: string): Promise<void> {
+  try {
+    const entry = await getHistoryEntryById(id);
+    if (!entry) {
+      toast.error("Eintrag nicht gefunden.");
+      return;
+    }
+    const st = getState();
+    const headerHtml = buildCompanyPrintHeader(st.company || null);
+    await printEntriesSafe([entry], st.fieldLabels, {
+      title: `Berechnung – ${entryDateLabel(entry) || "PSM"}`,
+      headerHtml,
+      chunkSize: 1,
+    });
+  } catch (err) {
+    console.error("[Mobil] PDF fehlgeschlagen", err);
+    toast.error("PDF konnte nicht erstellt werden.");
   }
 }
 
@@ -136,20 +213,27 @@ async function start(): Promise<void> {
   // Datenbank verbinden (löst Reload der Lookups in der Maske aus).
   await connectDatabase();
 
-  // Teilen-Status: bei jeder neuen Erfassung hochzählen.
+  // Teilen-Status + Liste der letzten Erfassungen.
   renderShareStatus();
+  void loadRecent();
   subscribeEvent("history:data-changed", (payload) => {
     const type = (payload as { type?: string } | undefined)?.type;
     if (type === "created" || type === "created-bulk") {
       setUnsharedCount(getUnsharedCount() + 1);
       renderShareStatus();
     }
+    void loadRecent();
   });
 
   document.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-action="m-share"]')) {
       void handleShare();
+      return;
+    }
+    const pdfBtn = target?.closest<HTMLElement>(".m-pdf-btn[data-entry-id]");
+    if (pdfBtn) {
+      void printEntry(pdfBtn.dataset.entryId || "");
     }
   });
 
