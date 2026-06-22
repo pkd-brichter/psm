@@ -10,9 +10,6 @@ let worker: Worker | null = null;
 let messageId = 0;
 const DEFAULT_WORKER_TIMEOUT = 30000;
 const LONG_RUNNING_ACTION_TIMEOUTS: Record<string, number> = {
-  // BVL-DB (100+ MB) import can exceed 3 minutes in browsers with throttled timers
-  importBvlSqlite: 8 * 60 * 1000,
-  importBvlDataset: 2 * 60 * 1000,
   exportHistoryRange: 60 * 1000,
   exportDB: 60 * 1000,
 };
@@ -839,121 +836,6 @@ export async function listImportLog(
 }
 
 /**
- * Import BVL dataset
- */
-export async function importBvlDataset(dataset: any): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("importBvlDataset", dataset);
-}
-
-export async function importBvlSqlite(
-  data: ArrayBuffer,
-  manifest: any
-): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("importBvlSqlite", { data, manifest });
-}
-
-export async function getBvlMeta(key: string): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("getBvlMeta", key);
-}
-
-export async function setBvlMeta(key: string, value: any): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("setBvlMeta", { key, value });
-}
-
-export async function appendBvlSyncLog(entry: any): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("appendBvlSyncLog", entry);
-}
-
-export async function listBvlSyncLog(options: any = {}): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("listBvlSyncLog", options);
-}
-
-export type ZulassungQueryOptions = {
-  culture?: string | null;
-  pest?: string | null;
-  text?: string;
-  includeExpired?: boolean;
-  page?: number;
-  pageSize?: number;
-  includeTotal?: boolean;
-};
-
-export type ZulassungQueryResult = {
-  items: any[];
-  page: number;
-  pageSize: number;
-  totalCount: number | null;
-  hasMore: boolean;
-};
-
-export async function queryZulassung(
-  params: ZulassungQueryOptions = {}
-): Promise<ZulassungQueryResult> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("queryZulassung", params);
-}
-
-/**
- * Query BVL data
- */
-export async function queryBvl(filters: any): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("queryBvl", filters);
-}
-
-/**
- * Get BVL sync status
- */
-export async function getBvlSyncStatus(): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("getBvlSyncStatus", {});
-}
-
-/**
- * List BVL cultures
- */
-export async function listBvlCultures(options: any = {}): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("listBvlCultures", options);
-}
-
-/**
- * List BVL Schadorganismen
- */
-export async function listBvlSchadorg(options: any = {}): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("listBvlSchadorg", options);
-}
-
-/**
  * Lookup helpers (EPPO / BBCH)
  */
 export async function importLookupEppo(
@@ -1152,16 +1034,6 @@ export async function deleteAckerflaeche(payload: {
 }): Promise<any> {
   if (!worker) throw new Error("Database not initialized");
   return await callWorker("deleteAckerflaeche", payload);
-}
-
-/**
- * Diagnose BVL schema
- */
-export async function diagnoseBvlSchema(): Promise<any> {
-  if (!worker) {
-    throw new Error("Database not initialized");
-  }
-  return await callWorker("diagnoseBvlSchema", {});
 }
 
 // ============================================

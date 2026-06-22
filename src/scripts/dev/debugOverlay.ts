@@ -84,11 +84,6 @@ const PROVIDER_TEMPLATES: ProviderConfig[] = [
     budget: { initialLoad: 25, maxItems: 75 },
   },
   {
-    id: "zulassung",
-    label: "Zulassung",
-    budget: { initialLoad: 25, maxItems: 200 },
-  },
-  {
     id: "import",
     label: "Import-Vorschau",
     budget: { initialLoad: 20, maxItems: 50 },
@@ -286,12 +281,6 @@ function registerBuiltInProviders(registry: Map<string, ProviderRecord>): void {
       label: "Lookup (EPPO/BBCH)",
       budget: { initialLoad: 25, maxItems: 75 },
     },
-    {
-      id: "zulassung",
-      label: "Zulassung",
-      budget: { initialLoad: 25, maxItems: 200 },
-      getMetrics: (state) => metricsFromZulassung(state),
-    },
   ];
 
   for (const config of builtIns) {
@@ -319,22 +308,6 @@ function metricsFromSlice(
     cursor: slice.cursor ?? null,
     lastUpdated: slice.lastUpdatedAt ?? null,
     payloadKb,
-  };
-}
-
-function metricsFromZulassung(state: AppState): ProviderMetrics | null {
-  const result = state.zulassung?.results;
-  if (!result) {
-    return null;
-  }
-  return {
-    items: Array.isArray(result.items) ? result.items.length : null,
-    totalCount:
-      typeof result.totalCount === "number" ? result.totalCount : null,
-    cursor: result.hasMore ? `${result.page + 1}` : null,
-    payloadKb: estimatePayloadKb(result.items),
-    lastUpdated: null,
-    note: result.hasMore ? "Weitere Seiten verfügbar" : null,
   };
 }
 

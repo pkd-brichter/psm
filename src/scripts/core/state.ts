@@ -111,7 +111,6 @@ export interface AppState {
       | "calc"
       | "documentation"
       | "history"
-      | "zulassung"
       | "settings"
       | "report"
       | "lookup"
@@ -160,49 +159,6 @@ export interface AppState {
   fieldLabels: any;
   calcContext: any | null;
   gps: GpsState;
-  zulassung: {
-    filters: {
-      culture: string | null;
-      pest: string | null;
-      text: string;
-      includeExpired: boolean;
-    };
-    results: {
-      items: any[];
-      page: number;
-      pageSize: number;
-      totalCount: number | null;
-      hasMore: boolean;
-    };
-    resultStatus: "idle" | "loading" | "ready" | "error";
-    resultError: string | null;
-    lastSync: string | null;
-    lastResultCounts: any | null;
-    dataSource: string | null;
-    apiStand: string | null;
-    manifestVersion: string | null;
-    lastSyncHash: string | null;
-    busy: boolean;
-    progress: {
-      step: string | null;
-      percent: number;
-      message: string;
-    };
-    error: string | null;
-    logs: any[];
-    debug: {
-      schema: any | null;
-      lastSyncLog: any[];
-      manifest: any | null;
-      lastAutoUpdateCheck: any | null;
-    };
-    lookups: {
-      cultures: any[];
-      pests: any[];
-    };
-    autoUpdateAvailable: boolean;
-    autoUpdateVersion: string | null;
-  };
   ui: {
     notifications: any[];
   };
@@ -265,42 +221,6 @@ let state: AppState = {
     pending: false,
     lastError: null,
     initialized: false,
-  },
-  zulassung: {
-    filters: {
-      culture: null,
-      pest: null,
-      text: "",
-      includeExpired: false,
-    },
-    results: {
-      items: [],
-      page: 0,
-      pageSize: 25,
-      totalCount: null,
-      hasMore: false,
-    },
-    resultStatus: "idle",
-    resultError: null,
-    lastSync: null,
-    lastResultCounts: null,
-    dataSource: null,
-    apiStand: null,
-    manifestVersion: null,
-    lastSyncHash: null,
-    busy: false,
-    progress: { step: null, percent: 0, message: "" },
-    error: null,
-    logs: [],
-    debug: {
-      schema: null,
-      lastSyncLog: [],
-      manifest: null,
-      lastAutoUpdateCheck: null,
-    },
-    lookups: { cultures: [], pests: [] },
-    autoUpdateAvailable: false,
-    autoUpdateVersion: null,
   },
   ui: {
     notifications: [],
@@ -421,42 +341,6 @@ export function resetState(newState?: AppState): AppState {
       pending: false,
       lastError: null,
       initialized: false,
-    },
-    zulassung: {
-      filters: {
-        culture: null,
-        pest: null,
-        text: "",
-        includeExpired: false,
-      },
-      results: {
-        items: [],
-        page: 0,
-        pageSize: 25,
-        totalCount: null,
-        hasMore: false,
-      },
-      resultStatus: "idle",
-      resultError: null,
-      lastSync: null,
-      lastResultCounts: null,
-      dataSource: null,
-      apiStand: null,
-      manifestVersion: null,
-      lastSyncHash: null,
-      busy: false,
-      progress: { step: null, percent: 0, message: "" },
-      error: null,
-      logs: [],
-      debug: {
-        schema: null,
-        lastSyncLog: [],
-        manifest: null,
-        lastAutoUpdateCheck: null,
-      },
-      lookups: { cultures: [], pests: [] },
-      autoUpdateAvailable: false,
-      autoUpdateVersion: null,
     },
     ui: {
       notifications: [],

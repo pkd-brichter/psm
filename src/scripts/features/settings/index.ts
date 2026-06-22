@@ -16,10 +16,9 @@ import {
 } from "@scripts/features/shared/pagerWidget";
 import { initGps } from "@scripts/features/gps";
 import {
-  initZulassung,
-  resetZulassungInit,
-  type InitZulassungOptions,
-} from "@scripts/features/zulassung";
+  initCodesManager,
+  resetCodesManagerInit,
+} from "@scripts/features/codesManager";
 
 interface Services {
   state: {
@@ -84,10 +83,10 @@ function createSection(): HTMLElement {
           </button>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link" data-settings-tab="bvl" type="button">
-            <i class="bi bi-database me-1"></i>
-            <span class="d-none d-md-inline">BVL & Codes</span>
-            <span class="d-md-none">BVL</span>
+          <button class="nav-link" data-settings-tab="codes" type="button">
+            <i class="bi bi-tags me-1"></i>
+            <span class="d-none d-md-inline">EPPO & BBCH Codes</span>
+            <span class="d-md-none">Codes</span>
           </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -219,9 +218,9 @@ function createSection(): HTMLElement {
         <div data-feature="gps-embedded"></div>
       </div>
 
-      <!-- BVL & Codes Tab (combines BVL data and EPPO/BBCH management) -->
-      <div class="settings-pane" data-pane="bvl" style="display: none;">
-        <div data-feature="bvl-embedded"></div>
+      <!-- EPPO & BBCH Codes Tab (eigene Kulturen/Stadien als Schnellauswahl) -->
+      <div class="settings-pane" data-pane="codes" style="display: none;">
+        <div data-feature="codes-embedded"></div>
       </div>
     </div>
   `;
@@ -842,7 +841,7 @@ export function initSettings(
 
   // ===== Tab Switching Logic =====
   let gpsInitialized = false;
-  let bvlInitialized = false;
+  let codesInitialized = false;
 
   function switchSettingsTab(tabName: string): void {
     activeSettingsTab = tabName;
@@ -872,41 +871,25 @@ export function initSettings(
       }
     }
 
-    if (tabName === "bvl" && !bvlInitialized) {
-      const bvlContainer = section.querySelector(
-        '[data-feature="bvl-embedded"]'
+    if (tabName === "codes" && !codesInitialized) {
+      const codesContainer = section.querySelector(
+        '[data-feature="codes-embedded"]'
       );
 
-      if (bvlContainer) {
-        // Reset Zulassung init state to allow embedding
-        resetZulassungInit();
-
-        // Build services for Zulassung - emit might not be available
-        const zulassungServices = {
-          state: services.state,
-          events: {
-            emit:
-              services.events?.emit ||
-              ((name: string, payload?: unknown) => {
-                console.log("[Settings BVL] Fallback emit:", name, payload);
-              }),
-            subscribe: services.events?.subscribe
-              ? <T = unknown>(
-                  eventName: string,
-                  handler: (payload: T) => void
-                ): (() => void) => {
-                  const result = services.events!.subscribe!(
-                    eventName,
-                    handler
-                  );
-                  return typeof result === "function" ? result : () => {};
-                }
-              : undefined,
+      if (codesContainer) {
+        // Reset, damit der Codes-Manager in den Settings-Tab eingebettet werden kann.
+        resetCodesManagerInit();
+        initCodesManager(
+          codesContainer,
+          {
+            state: services.state,
+            events: {
+              subscribe: services.events?.subscribe,
+            },
           },
-        };
-        // Initialize in embedded mode - always visible
-        initZulassung(bvlContainer, zulassungServices, { embedded: true });
-        bvlInitialized = true;
+          { embedded: true }
+        );
+        codesInitialized = true;
       }
     }
   }

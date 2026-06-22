@@ -73,11 +73,6 @@ export default defineConfig({
         output: {
           manualChunks: {
             sqlite: ["./src/scripts/core/storage/sqlite"],
-            bvl: [
-              "./src/scripts/core/bvlSync",
-              "./src/scripts/core/bvlDataset",
-              "./src/scripts/core/bvlClient",
-            ],
             vendor: ["./src/scripts/core/bootstrap"],
           },
         },

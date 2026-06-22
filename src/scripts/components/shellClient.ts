@@ -73,7 +73,6 @@ const SECTION_TO_AREA: Partial<Record<Section, string>> = {
   settings: "settings",
   gps: "settings",
   lookup: "settings",
-  zulassung: "settings",
   import: "settings",
 };
 
