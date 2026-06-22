@@ -25,6 +25,7 @@
     </button>
     <button class="nav-btn nav-btn-share" data-action="share-data" title="Daten teilen" aria-label="Daten teilen">
       <i class="bi bi-share"></i>
+      <span class="nav-badge d-none" data-role="share-badge"></span>
     </button>
   </nav>
 
@@ -81,6 +82,27 @@
   }
   :global(body.mobile-mode) .nav-btn-share {
     display: flex;
+    position: relative;
+  }
+  /* Hinweis "noch nicht geteilt": Zähler-Badge + Akzentfarbe am Teilen-Button */
+  .nav-btn-share.has-unshared {
+    background: var(--warning-600, #d97706);
+    color: #000;
+  }
+  .nav-badge {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
   }
   :global(body.mobile-mode) .nav-btn[data-area="acker"],
   :global(body.mobile-mode) .nav-btn[data-area="settings"] {

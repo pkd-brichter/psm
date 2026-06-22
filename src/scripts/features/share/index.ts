@@ -12,6 +12,9 @@
 
 import { exportSnapshot } from "@scripts/core/storage/sqlite";
 import { toast } from "@scripts/core/toast";
+import { setUnsharedCount } from "./unshared";
+
+const DEVICE_LABEL_KEY = "psm-device-label";
 
 function timestampSlug(): string {
   const now = new Date();
@@ -22,10 +25,37 @@ function timestampSlug(): string {
   );
 }
 
+/** Geräte-/Personen-Label, das in der Import-Historie am PC erscheint. */
+export function getDeviceLabel(): string {
+  try {
+    const stored = localStorage.getItem(DEVICE_LABEL_KEY);
+    if (stored && stored.trim()) return stored.trim();
+  } catch {
+    /* ignore */
+  }
+  return "Mobilgerät";
+}
+
+function filenameSlug(label: string): string {
+  return (
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "mobil"
+  );
+}
+
 export async function shareMobileData(): Promise<void> {
   let json: string;
+  const device = getDeviceLabel();
   try {
     const snapshot = await exportSnapshot();
+    // Metadaten fürs Import-Protokoll am PC (Gerät/Zeitpunkt).
+    snapshot.metadata = {
+      ...(snapshot.metadata || {}),
+      device,
+      exportedAt: new Date().toISOString(),
+    };
     json = JSON.stringify(snapshot, null, 2);
   } catch (err) {
     console.error("[Share] Export fehlgeschlagen", err);
@@ -33,7 +63,7 @@ export async function shareMobileData(): Promise<void> {
     return;
   }
 
-  const filename = `psm-mobil-${timestampSlug()}.json`;
+  const filename = `psm-${filenameSlug(device)}-${timestampSlug()}.json`;
   const blob = new Blob([json], { type: "application/json" });
   const file = new File([blob], filename, { type: "application/json" });
 
@@ -53,6 +83,7 @@ export async function shareMobileData(): Promise<void> {
         title: "PSM-Daten",
         text: "Pflanzenschutz-Erfassung (JSON) – am Desktop über Import/Merge einspielen.",
       });
+      setUnsharedCount(0);
       return;
     } catch (err) {
       // Abbruch durch Nutzer ist kein Fehler.
@@ -73,6 +104,7 @@ export async function shareMobileData(): Promise<void> {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setUnsharedCount(0);
     toast.info("Datei wurde heruntergeladen.");
   } catch (err) {
     console.error("[Share] Download fehlgeschlagen", err);

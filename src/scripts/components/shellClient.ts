@@ -4,7 +4,8 @@ import {
   subscribeState,
   updateSlice,
 } from "@scripts/core/state";
-import { emit } from "@scripts/core/eventBus";
+import { emit, subscribe as subscribeEvent } from "@scripts/core/eventBus";
+import { incrementUnshared, updateShareBadge } from "@scripts/features/share/unshared";
 
 type Section = AppState["app"]["activeSection"];
 
@@ -196,6 +197,16 @@ function initShell(): void {
       .finally(() => {
         shareButton.disabled = false;
       });
+  });
+
+  // Mobile-Hinweis "noch nicht geteilt": Zähler bei jeder neuen Erfassung erhöhen.
+  updateShareBadge();
+  subscribeEvent("history:data-changed", (payload) => {
+    if (!document.body.classList.contains("mobile-mode")) return;
+    const type = (payload as { type?: string } | undefined)?.type;
+    if (type === "created" || type === "created-bulk") {
+      incrementUnshared();
+    }
   });
 
   const syncUi = (state: AppState) => {

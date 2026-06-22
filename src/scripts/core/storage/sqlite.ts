@@ -795,6 +795,49 @@ export async function appendHistoryEntry(entry: any): Promise<{ id: number }> {
   return await callWorker("appendHistoryEntry", entry);
 }
 
+export interface ImportLogEntry {
+  id: number;
+  importedAt: string;
+  source: string | null;
+  device: string | null;
+  added: number;
+  skipped: number;
+  rangeStart: string | null;
+  rangeEnd: string | null;
+  note: string | null;
+}
+
+/**
+ * Protokolliert einen Daten-Import in der Import-Historie (import_log).
+ */
+export async function appendImportLog(entry: {
+  importedAt?: string;
+  source?: string | null;
+  device?: string | null;
+  added?: number;
+  skipped?: number;
+  rangeStart?: string | null;
+  rangeEnd?: string | null;
+  note?: string | null;
+}): Promise<{ id: number; importedAt: string }> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("appendImportLog", entry);
+}
+
+/**
+ * Lädt die Import-Historie (neueste zuerst).
+ */
+export async function listImportLog(
+  limit = 50
+): Promise<{ items: ImportLogEntry[] }> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("listImportLog", { limit });
+}
+
 /**
  * Import BVL dataset
  */

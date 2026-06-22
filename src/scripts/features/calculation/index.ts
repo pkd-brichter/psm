@@ -127,6 +127,16 @@ function escapeAttr(value: unknown): string {
   return escapeHtml(value);
 }
 
+function generateClientUuid(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  return `uuid_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 function createSection(
   labels: Labels,
   defaultsState: DefaultsState
@@ -1906,6 +1916,11 @@ export function initCalculation(
           ...calc.header,
           items: calc.items,
           savedAt,
+          // Geräteübergreifend eindeutiger Ausweis – Grundlage für sicheren
+          // Duplikatschutz beim Zusammenführen (Mobil -> zentrale DB).
+          clientUuid:
+            (calc.header as { clientUuid?: string })?.clientUuid ||
+            generateClientUuid(),
         };
         const appState = services.state.getState();
         const driverKey = getActiveDriverKey();

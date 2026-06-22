@@ -4,7 +4,10 @@ import {
   appendHistoryEntry,
   listHistoryEntries,
   persistSqliteDatabaseFile,
+  appendImportLog,
+  listImportLog,
   type HistoryQueryFilters,
+  type ImportLogEntry,
 } from "@scripts/core/storage/sqlite";
 import {
   ensureSliceWindow,
@@ -17,6 +20,7 @@ import {
   createPagerWidget,
   type PagerWidget,
 } from "@scripts/features/shared/pagerWidget";
+import { subscribe as subscribeEvent } from "@scripts/core/eventBus";
 import { strFromU8, unzipSync } from "fflate";
 import {
   createDebugOverlayBinding,
@@ -35,6 +39,7 @@ type HistoryEntry = {
   kultur?: string;
   usageType?: string;
   invekos?: string;
+  clientUuid?: string;
   items?: any[];
   [key: string]: unknown;
 };
@@ -159,8 +164,94 @@ function createSection(): HTMLElement {
         <p class="small text-muted mt-2" data-role="import-feedback"></p>
       </div>
     </div>
+
+    <div class="card card-dark mt-4" data-role="import-log-card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>Import-Historie</h6>
+        <span class="small text-muted">Wann wurde was eingespielt</span>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Zeitpunkt</th>
+                <th>Quelle / Gerät</th>
+                <th class="text-end">Neu</th>
+                <th class="text-end">Übersprungen</th>
+                <th>Zeitraum</th>
+              </tr>
+            </thead>
+            <tbody data-role="import-log-list">
+              <tr><td colspan="5" class="text-muted small">Noch keine Importe protokolliert.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   `;
   return wrapper;
+}
+
+function formatImportLogTimestamp(iso: string | null): string {
+  if (!iso) return "-";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function renderImportLog(
+  section: HTMLElement,
+  entries: ImportLogEntry[]
+): void {
+  const body = section.querySelector<HTMLElement>(
+    '[data-role="import-log-list"]'
+  );
+  if (!body) return;
+  if (!entries.length) {
+    body.innerHTML = `<tr><td colspan="5" class="text-muted small">Noch keine Importe protokolliert.</td></tr>`;
+    return;
+  }
+  body.innerHTML = entries
+    .map((entry) => {
+      const range =
+        entry.rangeStart || entry.rangeEnd
+          ? `${formatDateFromIso(entry.rangeStart) || entry.rangeStart || "?"} – ${
+              formatDateFromIso(entry.rangeEnd) || entry.rangeEnd || "?"
+            }`
+          : "-";
+      const sourceParts = [entry.source, entry.device].filter(Boolean);
+      const source = sourceParts.length
+        ? escapeHtml(sourceParts.join(" · "))
+        : "-";
+      return `
+        <tr>
+          <td>${escapeHtml(formatImportLogTimestamp(entry.importedAt))}</td>
+          <td>${source}</td>
+          <td class="text-end text-success">${entry.added}</td>
+          <td class="text-end text-muted">${entry.skipped}</td>
+          <td class="small text-muted">${escapeHtml(range)}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+async function refreshImportLog(section: HTMLElement): Promise<void> {
+  if (getActiveDriverKey() !== "sqlite") {
+    return;
+  }
+  try {
+    const result = await listImportLog(50);
+    renderImportLog(section, result.items || []);
+  } catch (error) {
+    console.warn("Import-Historie konnte nicht geladen werden", error);
+  }
 }
 
 function setHint(
@@ -393,6 +484,16 @@ async function loadExistingDuplicateKeys(
 }
 
 function buildDuplicateKey(entry: HistoryEntry): string {
+  // Bevorzugt der stabile, geräteübergreifende Ausweis (clientUuid). Dieselbe
+  // Mobil-Datei zweimal importiert -> garantiert als Duplikat erkannt. Nur
+  // Alt-Einträge ohne UUID fallen auf den (unscharfen) Inhalts-Schlüssel zurück.
+  const uuid =
+    typeof entry.clientUuid === "string" && entry.clientUuid
+      ? entry.clientUuid
+      : "";
+  if (uuid) {
+    return `uuid:${uuid}`;
+  }
   const base =
     entry.savedAt || entry.dateIso || entry.createdAt || entry.datum || "";
   const creator = entry.ersteller || "";
@@ -683,7 +784,9 @@ async function readZipPayload(buffer: Uint8Array): Promise<{
     ? payload
     : Array.isArray(payload.entries)
       ? payload.entries
-      : [];
+      : Array.isArray(payload.history)
+        ? payload.history
+        : [];
   return { entries, metadata };
 }
 
@@ -698,6 +801,10 @@ async function readJsonPayload(buffer: Uint8Array): Promise<{
   }
   if (Array.isArray(parsed.entries)) {
     return { entries: parsed.entries, metadata: parsed.metadata || null };
+  }
+  // Snapshot-Format (z. B. Mobil-Export "Daten teilen"): Einträge liegen unter "history".
+  if (Array.isArray(parsed.history)) {
+    return { entries: parsed.history, metadata: parsed.metadata || null };
   }
   throw new Error("JSON enthält keine Eintragsliste.");
 }
@@ -1024,6 +1131,27 @@ async function runImport(
       hintMessages.push("Import abgeschlossen.");
     }
     setHint(section, hintMessages.join(" "), hintVariant);
+
+    // Import-Historie protokollieren (Tabelle existiert nur im SQLite-Modus).
+    if (driverKey === "sqlite" && (successCount || duplicatesDuringImport)) {
+      try {
+        await appendImportLog({
+          source: currentSession.filename || null,
+          device:
+            ((currentSession.metadata?.device ||
+              currentSession.metadata?.label) as string | undefined) || null,
+          added: successCount,
+          skipped: duplicatesDuringImport,
+          rangeStart: currentSession.stats.startDateRaw,
+          rangeEnd: currentSession.stats.endDateRaw,
+          note: failed.length ? `${failed.length} fehlgeschlagen` : null,
+        });
+        await persistSqliteDatabaseFile().catch(() => undefined);
+        await refreshImportLog(section);
+      } catch (error) {
+        console.warn("Import-Historie konnte nicht geschrieben werden", error);
+      }
+    }
   } catch (error) {
     console.error("Import fehlgeschlagen", error);
     setFeedback(section, "Import fehlgeschlagen. Siehe Konsole für Details.");
@@ -1155,5 +1283,16 @@ export function initImportMerge(
   host.appendChild(section);
   wireEventHandlers(section, services);
   setHint(section, "Wähle eine Datei aus, um den Import zu starten.");
+
+  // Import-Historie laden, sobald eine DB verbunden ist bzw. der Bereich
+  // geöffnet wird (beim Init ist die zentrale DB evtl. noch nicht verbunden).
+  void refreshImportLog(section);
+  subscribeEvent("database:connected", () => void refreshImportLog(section));
+  subscribeEvent("app:sectionChanged", (next) => {
+    if (next === "documentation" || next === "import") {
+      void refreshImportLog(section);
+    }
+  });
+
   initialized = true;
 }

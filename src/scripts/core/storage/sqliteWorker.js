@@ -1221,6 +1221,26 @@ function ensureLagerTable(targetDb = db) {
   `);
 }
 
+// Import-Historie: protokolliert jeden Daten-Import (z. B. Mobil-Pakete via
+// WhatsApp), damit am PC nachvollziehbar ist, WANN WAS von WEM eingespielt wurde.
+function ensureImportLogTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS import_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      imported_at TEXT NOT NULL,
+      source TEXT,
+      device TEXT,
+      added INTEGER NOT NULL DEFAULT 0,
+      skipped INTEGER NOT NULL DEFAULT 0,
+      range_start TEXT,
+      range_end TEXT,
+      note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_log_imported_at ON import_log(imported_at DESC);
+  `);
+}
+
 function mapLagerRow(row) {
   if (!row) return null;
   return {
@@ -1929,6 +1949,12 @@ self.onmessage = async function (event) {
         break;
       case "insertArchiveLog":
         result = await insertArchiveLog(payload);
+        break;
+      case "appendImportLog":
+        result = await appendImportLog(payload);
+        break;
+      case "listImportLog":
+        result = await listImportLog(payload);
         break;
       case "deleteArchiveLog":
         result = await deleteArchiveLog(payload);
@@ -2978,6 +3004,24 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 17 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 18: Import-Historie (import_log)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const importLogTableMissing = !hasTable(db, "import_log");
+  if (importLogTableMissing || postMigrationVersion < 18) {
+    console.log("Migrating database to version 18 (import_log)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureImportLogTable(db);
+      db.exec("PRAGMA user_version = 18");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 18 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 18 failed:", error);
       throw error;
     }
   }
@@ -4265,6 +4309,61 @@ async function insertArchiveLog(payload = {}) {
     note: normalized.note,
     metadata_json: JSON.stringify(normalized.metadata || payload || {}),
   });
+}
+
+async function appendImportLog(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureImportLogTable();
+  const importedAt = payload.importedAt || new Date().toISOString();
+  const stmt = db.prepare(
+    `INSERT INTO import_log
+      (imported_at, source, device, added, skipped, range_start, range_end, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  stmt
+    .bind([
+      importedAt,
+      payload.source != null ? String(payload.source) : null,
+      payload.device != null ? String(payload.device) : null,
+      Number(payload.added) || 0,
+      Number(payload.skipped) || 0,
+      payload.rangeStart != null ? String(payload.rangeStart) : null,
+      payload.rangeEnd != null ? String(payload.rangeEnd) : null,
+      payload.note != null ? String(payload.note) : null,
+    ])
+    .step();
+  stmt.finalize();
+  const id = db.selectValue("SELECT last_insert_rowid()");
+  return { id, importedAt };
+}
+
+async function listImportLog(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureImportLogTable();
+  const limit = Math.min(Math.max(Number(payload?.limit) || 50, 1), 500);
+  const rows = [];
+  db.exec({
+    sql: `SELECT id, imported_at, source, device, added, skipped, range_start, range_end, note
+          FROM import_log
+          ORDER BY datetime(imported_at) DESC, id DESC
+          LIMIT ?`,
+    bind: [limit],
+    rowMode: "object",
+    callback: (row) => {
+      rows.push({
+        id: row.id,
+        importedAt: row.imported_at,
+        source: row.source,
+        device: row.device,
+        added: Number(row.added) || 0,
+        skipped: Number(row.skipped) || 0,
+        rangeStart: row.range_start,
+        rangeEnd: row.range_end,
+        note: row.note,
+      });
+    },
+  });
+  return { items: rows };
 }
 
 async function deleteArchiveLog(payload = {}) {
