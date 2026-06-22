@@ -4,6 +4,33 @@
 
 🌐 **Live-Demo:** [www.digitale-psm.de](https://www.digitale-psm.de)
 
+---
+
+## 🌱 Pestalozzi-Garten-Plattform — Vision & Architektur (Fork-Kontext)
+
+Dieser Fork (`pkd-brichter/psm`, Deploy: **https://pkd-brichter.github.io/psm/**) ist die
+**maßgeschneiderte Plattform der Pestalozzi Gärtnerei Wahlwies (Demeter-Bio-Betrieb)** —
+nicht mehr das generische digitale-psm.de. Es werden viele Apps/Funktionen folgen.
+
+**Architektur-Prinzipien (immer einhalten):**
+- **Eine gemeinsame SQLite-DB für ALLE Apps** (Worker `src/scripts/core/storage/sqliteWorker.js`
+  = Source of Truth; Migrationen über `PRAGMA user_version`). Egal welche App geöffnet wird –
+  dieselbe DB. Ziel: Cross-App-Auswertungen.
+- **Modular & stabil:** jede App = eigenes Feature-Modul (`src/scripts/features/<name>/`),
+  als View in EINER SPA (linke **Sidebar-Navigation**, Icons + Namen, nicht ein-/ausklappbar),
+  Worker-CRUD + Bridge (`sqlite.ts`) + Migration.
+- **Maximal wenig Tipparbeit:** Stammdaten vorbefüllen/auswählbar machen; Unnötiges entfernen.
+- **Immer Statistik & Übersicht:** jede App zeigt auf einen Blick *wann was gemacht wurde* und
+  *was zu tun ist* (Dashboard, Warnungen, Verbrauch/Bestand). Profi-tauglich.
+- **Browser-only, GH Pages, kein Backend, leichtgewichtig** (Astro + Vanilla-TS; schwere Libs
+  wie Leaflet/Turf nur **lazy**). Deploy ohne Workflow: `npm run build` + `npx gh-pages -d dist -t`.
+
+**Apps:** Dashboard (Start), PSM (Erfassung/Doku), **PSM-Lager** (Bestand = Zugänge − Verbrauch,
+Verbrauch automatisch aus den Anwendungen), Acker-Planer (Freiland-Flächen). Geplant: weitere
+Lager (z. B. Jungpflanzen) + Cross-App-Features. Stand/Details: Memory `psm-platform.md`.
+
+---
+
 ## Features
 
 ### 📱 Progressive Web App (PWA)

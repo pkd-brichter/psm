@@ -388,7 +388,7 @@ export function initAcker(container: Element | null, services: Services): void {
 function renderShell(): string {
   return `
   <style>
-    .acker-wrap{display:flex;gap:0;height:calc(100vh - 168px);min-height:460px;border:1px solid var(--border-1);border-radius:12px;overflow:hidden;background:var(--surface-1,#0f172a)}
+    .acker-wrap{display:flex;gap:0;height:calc(100vh - 80px);min-height:460px;border:1px solid var(--border-1);border-radius:12px;overflow:hidden;background:var(--surface-1,#0f172a)}
     .acker-side{width:340px;min-width:300px;display:flex;flex-direction:column;border-right:1px solid var(--border-1);overflow:hidden}
     .acker-scroll{overflow-y:auto;padding:12px 14px;flex:1}
     .acker-map{flex:1;min-height:300px}

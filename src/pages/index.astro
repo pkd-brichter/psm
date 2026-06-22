@@ -8,9 +8,16 @@ import Shell from '../components/Shell.astro';
   <Shell />
   
   <main data-region="main" class="main-content d-none">
-    <div class="container py-4" style="margin-bottom: 60px;">
+    <div class="container py-4">
+      <!-- Dashboard / Start Section (Standard-Ansicht) -->
+      <div id="section-dashboard" class="content-section" style="display: block;">
+        <div class="section-container">
+          <div data-feature="dashboard"></div>
+        </div>
+      </div>
+
       <!-- Calculation Section -->
-      <div id="section-calc" class="content-section" style="display: block;">
+      <div id="section-calc" class="content-section" style="display: none;">
         <div class="section-container">
           <div data-feature="calculation"></div>
         </div>
@@ -49,9 +56,8 @@ import Shell from '../components/Shell.astro';
   </main>
   
   <style>
-    .main-content {
-      min-height: calc(100vh - 120px);
-      padding-bottom: 60px;
+    .main-content > .container {
+      padding-top: 1.25rem;
     }
     
     .content-section {

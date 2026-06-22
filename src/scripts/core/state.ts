@@ -107,6 +107,7 @@ export interface AppState {
     hasFileAccess: boolean;
     hasDatabase: boolean;
     activeSection:
+      | "dashboard"
       | "calc"
       | "documentation"
       | "history"
@@ -217,7 +218,7 @@ let state: AppState = {
     version: null,
     hasFileAccess: false,
     hasDatabase: false,
-    activeSection: "calc",
+    activeSection: "dashboard",
     storageDriver: "memory",
   },
   company: {
@@ -373,7 +374,7 @@ export function resetState(newState?: AppState): AppState {
       version: null,
       hasFileAccess: false,
       hasDatabase: false,
-      activeSection: "calc" as const,
+      activeSection: "dashboard" as const,
       storageDriver: "memory" as const,
     },
     company: {

@@ -10,6 +10,7 @@ import { initDocumentation } from "@scripts/features/documentation";
 import { initSettings } from "@scripts/features/settings";
 import { initLager } from "@scripts/features/lager";
 import { initAcker } from "@scripts/features/acker";
+import { initDashboard } from "@scripts/features/dashboard";
 import { initToastContainer } from "@scripts/core/toast";
 import type { AppState } from "@scripts/core/state";
 
@@ -69,6 +70,8 @@ function initIndex(): void {
   initLager(lagerContainer, services);
   const ackerContainer = document.querySelector('[data-feature="acker"]');
   initAcker(ackerContainer, services);
+  const dashboardContainer = document.querySelector('[data-feature="dashboard"]');
+  initDashboard(dashboardContainer, services);
 
   const updateBodyBackground = (hasDatabase: boolean) => {
     const bodyEl = document.body;
@@ -95,7 +98,7 @@ function initIndex(): void {
 
     // Use single source of truth for section visibility
     if (hasDatabase) {
-      const activeSection = state.app?.activeSection ?? "calc";
+      const activeSection = state.app?.activeSection ?? "dashboard";
       switchToSection(activeSection);
     }
   };
