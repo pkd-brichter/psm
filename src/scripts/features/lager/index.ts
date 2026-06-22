@@ -9,6 +9,7 @@ import {
   listLagerBewegungen,
   upsertLagerBewegung,
   deleteLagerBewegung,
+  listMittelStammdaten,
   persistSqliteDatabaseFile,
 } from "@scripts/core/storage/sqlite";
 import { getActiveDriverKey } from "@scripts/core/storage";
@@ -149,6 +150,11 @@ export function initLager(container: Element | null, services: Services): void {
   const emptyHint = container.querySelector<HTMLElement>(
     '[data-role="lager-empty"]'
   );
+  // Index aller bekannten Mittel (Name → Stammdaten) für Auswahl + Auto-Ausfüllen
+  const mittelIndex = new Map<
+    string,
+    { kennr: string | null; einheit: string | null; wirkstoff: string | null }
+  >();
 
   const renderUebersicht = (rows: any[]): void => {
     if (!tbody) return;
@@ -221,14 +227,17 @@ export function initLager(container: Element | null, services: Services): void {
     });
   };
 
-  const fillMittelOptions = (rows: any[]): void => {
+  const fillMittelOptions = (): void => {
     if (!mittelList) return;
-    mittelList.innerHTML = rows
+    mittelList.innerHTML = Array.from(mittelIndex.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], "de"))
       .map(
-        (r) =>
-          `<option value="${escapeAttr(r.name)}" data-kennr="${escapeAttr(
-            r.kennr || ""
-          )}" data-einheit="${escapeAttr(r.einheit || "")}"></option>`
+        ([name, m]) =>
+          `<option value="${escapeAttr(name)}" data-kennr="${escapeAttr(
+            m.kennr || ""
+          )}" data-einheit="${escapeAttr(m.einheit || "")}" data-wirkstoff="${escapeAttr(
+            m.wirkstoff || ""
+          )}"></option>`
       )
       .join("");
   };
@@ -240,13 +249,32 @@ export function initLager(container: Element | null, services: Services): void {
       return;
     }
     try {
-      const [ueb, bew] = await Promise.all([
+      const [ueb, bew, stamm] = await Promise.all([
         getLagerUebersicht(),
         listLagerBewegungen(),
+        listMittelStammdaten(),
       ]);
       renderUebersicht(ueb?.rows || []);
       renderBewegungen(bew?.rows || []);
-      fillMittelOptions(ueb?.rows || []);
+      // Mittel-Index: alle aus den PDFs extrahierten Mittel + bereits vorhandene
+      mittelIndex.clear();
+      (stamm?.rows || []).forEach((r: any) => {
+        if (r.name)
+          mittelIndex.set(r.name, {
+            kennr: r.kennr ?? null,
+            einheit: r.einheit ?? null,
+            wirkstoff: r.wirkstoff ?? null,
+          });
+      });
+      (ueb?.rows || []).forEach((r: any) => {
+        if (r.name && !mittelIndex.has(r.name))
+          mittelIndex.set(r.name, {
+            kennr: r.kennr ?? null,
+            einheit: r.einheit ?? null,
+            wirkstoff: r.wirkstoff ?? null,
+          });
+      });
+      fillMittelOptions();
     } catch (e) {
       console.warn("[Lager] Laden fehlgeschlagen:", e);
     }
@@ -270,6 +298,7 @@ export function initLager(container: Element | null, services: Services): void {
       await upsertLagerBewegung({
         mittelName,
         kennr: String(fd.get("kennr") || "").trim() || null,
+        wirkstoff: mittelIndex.get(mittelName)?.wirkstoff || null,
         typ: String(fd.get("typ") || "zugang"),
         menge,
         einheit: String(fd.get("einheit") || "").trim() || null,
@@ -293,14 +322,12 @@ export function initLager(container: Element | null, services: Services): void {
     '[name="mittel"]'
   );
   mittelInput?.addEventListener("change", () => {
-    const opt = Array.from(mittelList?.options || []).find(
-      (o) => o.value === mittelInput.value
-    );
-    if (!opt) return;
+    const m = mittelIndex.get(mittelInput.value);
+    if (!m) return;
     const eInp = container.querySelector<HTMLInputElement>('[name="einheit"]');
     const kInp = container.querySelector<HTMLInputElement>('[name="kennr"]');
-    if (eInp && !eInp.value) eInp.value = opt.getAttribute("data-einheit") || "";
-    if (kInp && !kInp.value) kInp.value = opt.getAttribute("data-kennr") || "";
+    if (eInp && m.einheit) eInp.value = m.einheit;
+    if (kInp && m.kennr) kInp.value = m.kennr;
   });
 
   // Aktualisieren, sobald der Lager-Bereich aktiv wird

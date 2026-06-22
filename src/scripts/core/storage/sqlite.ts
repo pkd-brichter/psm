@@ -1032,6 +1032,11 @@ export async function getLagerUebersicht(): Promise<any> {
   return await callWorker("getLagerUebersicht");
 }
 
+export async function listMittelStammdaten(): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("listMittelStammdaten");
+}
+
 // Acker-Planer (Freiland-Flächen)
 export async function listAckerflaechen(): Promise<any> {
   if (!worker) throw new Error("Database not initialized");

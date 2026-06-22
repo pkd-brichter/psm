@@ -11,7 +11,6 @@ import {
   getState,
   type GpsPoint,
   type AppState,
-  type MediumProfile,
 } from "@scripts/core/state";
 import { setFieldLabelByPath } from "@scripts/core/labels";
 import { getDatabaseSnapshot } from "@scripts/core/database";
@@ -210,13 +209,6 @@ function createSection(
               <i class="bi bi-tags me-2"></i>Mittel &amp; Codes
             </legend>
             <div class="row g-3">
-              <div class="col-md-3">
-                <label class="form-label calc-label">Mittelprofil</label>
-                <select class="form-select calc-input" data-role="calc-profile-select">
-                  <option value="">Alle Mittel</option>
-                </select>
-                <div class="form-text calc-hint" data-role="calc-profile-hint">Alle Mittel aktiv.</div>
-              </div>
               <div class="col-md-3">
                 <label class="form-label calc-label" for="calc-eppo">
                   ${escapeHtml(labels.calculation.fields.eppoCode.label)}
@@ -1182,11 +1174,6 @@ export function initCalculation(
         });
     }
     clearGpsSelection(services.state.getState());
-    activeProfileId = null;
-    if (profileSelect) {
-      profileSelect.value = "";
-    }
-    updateProfileHint(services.state.getState());
     services.state.updateSlice("calcContext", () => null);
     calculationSaveLocked = false;
     refreshSaveButtonState();
@@ -1202,12 +1189,6 @@ export function initCalculation(
     '[data-role="gps-selection-hint"]'
   );
   const areaInput = section.querySelector<HTMLInputElement>("#calc-area-ha");
-  const profileSelect = section.querySelector<HTMLSelectElement>(
-    '[data-role="calc-profile-select"]'
-  );
-  const profileHint = section.querySelector<HTMLElement>(
-    '[data-role="calc-profile-hint"]'
-  );
 
   if (!form || !resultCard || !resultsTable || !resultsHead || !resultsBody) {
     console.warn("Berechnungsbereich konnte nicht initialisiert werden");
@@ -1215,7 +1196,6 @@ export function initCalculation(
   }
 
   let selectedGpsPointId: string | null = null;
-  let activeProfileId: string | null = null;
   // Kultur → Mittel (Pestalozzi/Demeter)
   let kulturenList: Array<{
     kultur: string;
@@ -1229,69 +1209,6 @@ export function initCalculation(
   const checkedKmIds = new Set<string>();
   // pro Mittel anpassbare Aufwandmenge (Default = Maximum aus der Liste)
   const kmAmounts = new Map<string, number>();
-
-  const getProfileById = (
-    state: AppState,
-    id: string | null
-  ): MediumProfile | null => {
-    if (!id) {
-      return null;
-    }
-    return state.mediumProfiles?.find((profile) => profile.id === id) ?? null;
-  };
-
-  const updateProfileHint = (state: AppState): void => {
-    if (!profileHint) {
-      return;
-    }
-    const profile = getProfileById(state, activeProfileId);
-    const mediums = extractSliceItems<any>(state.mediums);
-    if (!profile) {
-      const total = mediums.length;
-      profileHint.textContent = total
-        ? `${total} Mittel aktiv.`
-        : "Keine Mittel verfügbar.";
-      return;
-    }
-    const mediumMap = new Map(
-      mediums.map((medium: any) => [medium.id, medium])
-    );
-    const validCount = profile.mediumIds.filter((id) =>
-      mediumMap.has(id)
-    ).length;
-    if (!validCount) {
-      profileHint.textContent = `${profile.name} enthält keine vorhandenen Mittel.`;
-    } else if (validCount === 1) {
-      profileHint.textContent = `${profile.name} · 1 Mittel.`;
-    } else {
-      profileHint.textContent = `${profile.name} · ${validCount} Mittel.`;
-    }
-  };
-
-  const updateProfileSelectOptions = (state: AppState): void => {
-    if (!profileSelect) {
-      return;
-    }
-    const profiles = state.mediumProfiles || [];
-    const previousId = activeProfileId;
-    const optionsHtml =
-      '<option value="">Alle Mittel</option>' +
-      profiles
-        .map(
-          (profile) =>
-            `<option value="${escapeHtml(profile.id)}">${escapeHtml(
-              profile.name
-            )}</option>`
-        )
-        .join("");
-    profileSelect.innerHTML = optionsHtml;
-    const stillAvailable = Boolean(
-      previousId && profiles.some((profile) => profile.id === previousId)
-    );
-    activeProfileId = stillAvailable ? previousId : null;
-    profileSelect.value = activeProfileId || "";
-    updateProfileHint(state);
-  };
 
   const getGpsPointById = (
     state: AppState,
@@ -1395,11 +1312,9 @@ export function initCalculation(
     applyFieldLabels(section, nextState.fieldLabels);
     setCalcContext(nextState.calcContext as CalculationResult | null);
     updateGpsSelectOptions(nextState);
-    updateProfileSelectOptions(nextState);
   });
 
   updateGpsSelectOptions(initialState);
-  updateProfileSelectOptions(initialState);
   setupHasValueTracking();
 
   gpsSelect?.addEventListener("change", () => {
@@ -1421,14 +1336,6 @@ export function initCalculation(
     } else {
       clearGpsSelection(currentState);
     }
-  });
-
-  profileSelect?.addEventListener("change", () => {
-    const state = services.state.getState();
-    const selectedId = profileSelect.value || null;
-    const profile = getProfileById(state, selectedId);
-    activeProfileId = profile ? profile.id : null;
-    updateProfileHint(state);
   });
 
   // ---- Kultur → Mittel (Pestalozzi/Demeter) ----
@@ -1787,31 +1694,13 @@ export function initCalculation(
           longitude: selectedGpsPoint.longitude,
         }
       : null;
-    const mediumMap = new Map(
-      extractSliceItems<any>(state.mediums).map((medium: any) => [
-        medium.id,
-        medium,
-      ])
-    );
     const checkedKm = kulturMittelEntries.filter((e) =>
       checkedKmIds.has(e.id)
     );
-    const activeProfile = getProfileById(state, activeProfileId);
     let mediumsForCalculation: any[];
     if (checkedKm.length) {
-      // Vorrang: die für die gewählte Kultur angehakten Mittel
+      // angehakte Mittel der gewählten Kultur
       mediumsForCalculation = checkedKm.map(kmToCalcMedium);
-    } else if (activeProfile && activeProfile.mediumIds.length) {
-      mediumsForCalculation = activeProfile.mediumIds
-        .map((id) => mediumMap.get(id))
-        .filter(Boolean) as any[];
-      if (!mediumsForCalculation.length) {
-        toast.warning("Dieses Profil enthält keine vorhandenen Mittel.");
-        return;
-      }
-    } else if (activeProfile) {
-      toast.warning("Dieses Profil enthält keine Mittel.");
-      return;
     } else {
       mediumsForCalculation = extractSliceItems<any>(state.mediums).slice();
     }

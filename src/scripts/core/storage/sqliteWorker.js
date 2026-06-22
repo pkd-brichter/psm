@@ -1015,6 +1015,37 @@ async function seedInitialData(payload = {}) {
   return result;
 }
 
+/**
+ * Eindeutige Mittel-Stammdaten aus den Kultur→Mittel-Daten (PDF-Import) –
+ * für die Auswahl im Mittel-Lager (Name + Zulassungsnr. + Wirkstoff + Einheit).
+ */
+async function listMittelStammdaten() {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturMittelTable();
+  const rows = [];
+  db.exec({
+    sql: `SELECT mittel_name, kennr, MAX(wirkstoff) AS wirkstoff,
+            (SELECT k2.aufwand_einheit FROM kultur_mittel k2
+               WHERE k2.mittel_name = k.mittel_name
+                 AND IFNULL(k2.kennr,'') = IFNULL(k.kennr,'')
+                 AND k2.aufwand_einheit IS NOT NULL AND k2.aufwand_einheit <> ''
+               GROUP BY k2.aufwand_einheit ORDER BY COUNT(*) DESC LIMIT 1) AS einheit
+          FROM kultur_mittel k
+          GROUP BY mittel_name, kennr
+          ORDER BY mittel_name COLLATE NOCASE`,
+    rowMode: "object",
+    callback: (row) => {
+      rows.push({
+        name: row.mittel_name != null ? String(row.mittel_name) : "",
+        kennr: row.kennr ?? null,
+        wirkstoff: row.wirkstoff ?? null,
+        einheit: row.einheit ?? null,
+      });
+    },
+  });
+  return { rows };
+}
+
 // ============================================
 // Acker-Planer (Freiland-Flächen) Functions
 // ============================================
@@ -1997,6 +2028,9 @@ self.onmessage = async function (event) {
         break;
       case "getLagerUebersicht":
         result = await getLagerUebersicht();
+        break;
+      case "listMittelStammdaten":
+        result = await listMittelStammdaten();
         break;
       case "listAckerflaechen":
         result = await listAckerflaechen();
