@@ -37,7 +37,6 @@ const KATEGORIEN: { key: string; label: string }[] = [
   { key: "kultur", label: "Kultur-Dokumentation" },
   { key: "nachweis", label: "Flächennutzungs-Nachweis" },
   { key: "schaden", label: "Schaden / Krankheit" },
-  { key: "freiland", label: "Freiland / Drohne" },
   { key: "sonstiges", label: "Sonstiges" },
 ];
 
