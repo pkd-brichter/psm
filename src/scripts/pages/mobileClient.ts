@@ -85,14 +85,16 @@ async function connectDatabase(): Promise<void> {
   // Auf "calc" stellen, damit die Erfassungs-Maske als aktiv gilt.
   updateSlice("app", (app) => ({ ...app, activeSection: "calc" as const }));
 
-  emit("database:connected", { driver: "sqlite" });
-
+  // WICHTIG: Seed VOR dem Event – sonst lädt die Maske die Kultur-Liste, bevor
+  // die Pestalozzi-Stammdaten da sind (leeres Dropdown beim allerersten Start).
   try {
     await ensureInitialSeed();
     await loadGpsPoints();
   } catch (err) {
     console.warn("[Mobil] Seed/GPS konnte nicht geladen werden", err);
   }
+
+  emit("database:connected", { driver: "sqlite" });
 }
 
 async function start(): Promise<void> {

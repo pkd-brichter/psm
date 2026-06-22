@@ -123,4 +123,34 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     color: var(--color-text-muted);
     margin-bottom: 4px;
   }
+
+  /* Mittel-Liste: eigener Scroll-Bereich statt endlos langer Seite + Suchfeld */
+  body.m-page .km-list {
+    max-height: 46vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+    border-radius: 10px;
+    padding: 2px 12px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  body.m-page .km-filter {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  /* Mobile-Form: angenehmere Abstände & Tap-Größen */
+  body.m-page .calc-fieldset {
+    margin-bottom: 1.25rem !important;
+  }
+  body.m-page .calc-input,
+  body.m-page .form-control,
+  body.m-page .form-select {
+    font-size: 16px; /* verhindert iOS-Zoom beim Fokus */
+    min-height: 44px;
+  }
+  body.m-page .km-row .form-check-input {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
 </style>

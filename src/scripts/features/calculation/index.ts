@@ -261,6 +261,8 @@ function createSection(
                 <button type="button" class="btn btn-psm-secondary-outline btn-sm" data-action="km-select-none">Alle abwählen</button>
               </div>
             </div>
+            <input type="search" class="form-control form-control-sm km-filter mb-2"
+              data-role="km-filter" placeholder="Mittel suchen…" autocomplete="off" />
             <div data-role="kultur-mittel-list" class="km-list"></div>
           </fieldset>
 
@@ -1364,6 +1366,21 @@ export function initCalculation(
   const kmSelectNoneBtn = section.querySelector<HTMLButtonElement>(
     '[data-action="km-select-none"]'
   );
+  const kmFilter = section.querySelector<HTMLInputElement>(
+    '[data-role="km-filter"]'
+  );
+  let kmFilterTerm = "";
+  const applyKmFilter = (): void => {
+    if (!kmList) return;
+    kmList.querySelectorAll<HTMLElement>(".km-row").forEach((row) => {
+      const name = row.dataset.kmName || "";
+      row.style.display = !kmFilterTerm || name.includes(kmFilterTerm) ? "" : "none";
+    });
+  };
+  kmFilter?.addEventListener("input", () => {
+    kmFilterTerm = kmFilter.value.trim().toLowerCase();
+    applyKmFilter();
+  });
 
   const updateKmInfo = (): void => {
     if (!kmInfo) return;
@@ -1411,7 +1428,9 @@ export function initCalculation(
           : "";
         const cbId = `km-cb-${escapeAttr(e.id)}`;
         return `
-          <div class="km-row py-2" style="border-bottom:1px solid var(--border-1);">
+          <div class="km-row py-2" data-km-name="${escapeAttr(
+            (e.mittelName || "").toLowerCase()
+          )}" style="border-bottom:1px solid var(--border-1);">
             <div class="d-flex align-items-start gap-2">
               <input type="checkbox" class="form-check-input mt-1" id="${cbId}" data-km-id="${escapeAttr(
                 e.id
@@ -1468,6 +1487,7 @@ export function initCalculation(
         });
       });
     updateKmInfo();
+    applyKmFilter();
   };
 
   const loadKulturMittelFor = async (
@@ -1615,6 +1635,9 @@ export function initCalculation(
   services.events.subscribe("database:connected", async () => {
     quickSelectLoaded = false;
     await loadQuickSelectData(true);
+    // Kultur-Dropdown direkt füllen (sonst erst beim Antippen) – wichtig für
+    // den Mobile-Erststart, wo der Seed gerade erst eingespielt wurde.
+    void refreshKulturen();
   });
 
   section
