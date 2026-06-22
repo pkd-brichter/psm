@@ -1552,12 +1552,31 @@ html.qs-mode .card-dark {
 }
 .fotos-add { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; }
 .fotos-hint { font-size: 0.85rem; color: var(--text-muted); }
+.fotos-katpick { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted); margin: 0; }
+.fotos-katpick select { min-width: 180px; }
+.fotos-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.fotos-chip {
+  border: 1px solid var(--color-border);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.fotos-chip:hover { border-color: var(--border-2); }
+.fotos-chip.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
 .fotos-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
 }
 .fotos-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);
@@ -1576,11 +1595,31 @@ html.qs-mode .card-dark {
   background: var(--surface-2);
   display: block;
 }
+.fotos-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .fotos-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 0.72rem;
   color: var(--text-muted);
   padding: 6px 8px;
 }
+.fotos-meta b { color: var(--text); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fotos-meta-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fotos-empty { color: var(--text-muted); font-size: 0.9rem; padding: 8px 0; }
 
 body.fotos-modal-open { overflow: hidden; }
@@ -1603,6 +1642,26 @@ body.fotos-modal-open { overflow: hidden; }
   padding: 10px 14px; border-bottom: 1px solid var(--color-border); font-weight: 700; color: var(--text);
 }
 .fotos-modal-x { border: none; background: var(--surface-2); color: var(--text); width: 34px; height: 34px; border-radius: 999px; cursor: pointer; }
-.fotos-modal-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; background: var(--surface-2); }
-.fotos-modal-body img { max-width: 100%; max-height: 80vh; display: block; }
-.fotos-modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 14px; border-top: 1px solid var(--color-border); }
+.fotos-modal-body { flex: 1; overflow: auto; padding: 14px; }
+.fotos-modal-img {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2); border-radius: 10px; overflow: hidden; margin-bottom: 12px;
+}
+.fotos-modal-img img { max-width: 100%; max-height: 52vh; display: block; }
+.fotos-modal-created { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; }
+.fotos-modal-created i { margin-right: 4px; }
+.fotos-form { display: flex; flex-direction: column; gap: 12px; }
+.fotos-field { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.fotos-field > span { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
+.fotos-field-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.fotos-field-row .fotos-field { flex: 1; min-width: 160px; }
+.fotos-gps { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fotos-gps-val { font-size: 0.85rem; }
+.fotos-gps-val a { color: var(--color-primary); text-decoration: none; }
+.fotos-modal-foot { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; padding: 12px 14px; border-top: 1px solid var(--color-border); }
+@media (max-width: 560px) {
+  .fotos-modal { align-items: flex-end; }
+  .fotos-modal-sheet { width: 100vw; max-height: 94vh; border-radius: 16px 16px 0 0; }
+  .fotos-modal-foot { justify-content: stretch; }
+  .fotos-modal-foot .btn, .fotos-modal-foot a.btn { flex: 1; justify-content: center; }
+}

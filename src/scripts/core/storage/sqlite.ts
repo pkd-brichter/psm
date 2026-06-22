@@ -849,6 +849,7 @@ export interface FotoMeta {
   kultur: string | null;
   gpsLatitude: number | null;
   gpsLongitude: number | null;
+  notiz: string | null;
   device: string | null;
   mime: string | null;
   width: number | null;
@@ -866,12 +867,23 @@ export interface FotoInput {
   kultur?: string | null;
   gpsLatitude?: number | null;
   gpsLongitude?: number | null;
+  notiz?: string | null;
   device?: string | null;
   mime?: string;
   width?: number;
   height?: number;
   bytes?: number;
   data: string; // base64
+}
+
+export interface FotoPatch {
+  titel?: string | null;
+  kategorie?: string | null;
+  kultur?: string | null;
+  standort?: string | null;
+  notiz?: string | null;
+  gpsLatitude?: number | null;
+  gpsLongitude?: number | null;
 }
 
 export async function appendFoto(
@@ -901,6 +913,14 @@ export async function exportFotos(): Promise<{ items: (FotoMeta & { data: string
 export async function deleteFoto(id: number): Promise<{ success: boolean }> {
   if (!worker) throw new Error("Database not initialized");
   return await callWorker("deleteFoto", { id });
+}
+
+export async function updateFoto(
+  id: number,
+  patch: FotoPatch
+): Promise<{ success: boolean }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("updateFoto", { id, ...patch });
 }
 
 /**

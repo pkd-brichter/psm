@@ -1230,6 +1230,7 @@ function ensureFotosTable(targetDb = db) {
       kultur TEXT,
       gps_latitude REAL,
       gps_longitude REAL,
+      notiz TEXT,
       device TEXT,
       mime TEXT,
       width INTEGER,
@@ -1959,6 +1960,9 @@ self.onmessage = async function (event) {
         break;
       case "deleteFoto":
         result = await deleteFoto(payload);
+        break;
+      case "updateFoto":
+        result = await updateFoto(payload);
         break;
       case "deleteArchiveLog":
         result = await deleteArchiveLog(payload);
@@ -2874,6 +2878,26 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 19 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 20: Foto-Notiz-Spalte
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  if (postMigrationVersion < 20) {
+    console.log("Migrating database to version 20 (foto notiz)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureFotosTable(db);
+      if (!hasColumn(db, "fotos", "notiz")) {
+        db.exec("ALTER TABLE fotos ADD COLUMN notiz TEXT");
+      }
+      db.exec("PRAGMA user_version = 20");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 20 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 20 failed:", error);
       throw error;
     }
   }
@@ -4241,8 +4265,8 @@ async function appendFoto(payload = {}) {
   const stmt = db.prepare(
     `INSERT INTO fotos
       (client_uuid, created_at, entry_uuid, kategorie, titel, standort, kultur,
-       gps_latitude, gps_longitude, device, mime, width, height, bytes, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   stmt
     .bind([
@@ -4255,6 +4279,7 @@ async function appendFoto(payload = {}) {
       payload.kultur != null ? String(payload.kultur) : null,
       payload.gpsLatitude ?? null,
       payload.gpsLongitude ?? null,
+      payload.notiz != null ? String(payload.notiz) : null,
       payload.device != null ? String(payload.device) : null,
       payload.mime != null ? String(payload.mime) : "image/jpeg",
       payload.width ?? null,
@@ -4276,7 +4301,7 @@ async function listFotos(payload = {}) {
   const rows = [];
   db.exec({
     sql: `SELECT id, client_uuid, created_at, entry_uuid, kategorie, titel,
-                 standort, kultur, gps_latitude, gps_longitude, device, mime,
+                 standort, kultur, gps_latitude, gps_longitude, notiz, device, mime,
                  width, height, bytes
           FROM fotos ORDER BY datetime(created_at) DESC, id DESC LIMIT ?`,
     bind: [limit],
@@ -4293,6 +4318,7 @@ async function listFotos(payload = {}) {
         kultur: row.kultur,
         gpsLatitude: row.gps_latitude,
         gpsLongitude: row.gps_longitude,
+        notiz: row.notiz,
         device: row.device,
         mime: row.mime,
         width: row.width,
@@ -4302,6 +4328,36 @@ async function listFotos(payload = {}) {
     },
   });
   return { items: rows };
+}
+
+// Metadaten eines Fotos aktualisieren (Bild bleibt unverändert).
+async function updateFoto(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const id = payload && payload.id != null ? Number(payload.id) : null;
+  if (id == null) throw new Error("Foto-ID fehlt");
+  const fields = [];
+  const values = [];
+  const setIf = (key, column) => {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      fields.push(`${column} = ?`);
+      const v = payload[key];
+      values.push(v == null || v === "" ? null : v);
+    }
+  };
+  setIf("titel", "titel");
+  setIf("kategorie", "kategorie");
+  setIf("kultur", "kultur");
+  setIf("standort", "standort");
+  setIf("notiz", "notiz");
+  setIf("gpsLatitude", "gps_latitude");
+  setIf("gpsLongitude", "gps_longitude");
+  if (!fields.length) return { success: true };
+  values.push(id);
+  const stmt = db.prepare(`UPDATE fotos SET ${fields.join(", ")} WHERE id = ?`);
+  stmt.bind(values).step();
+  stmt.finalize();
+  return { success: true };
 }
 
 // Bilddaten (base64) eines Fotos – lazy nachladen.
@@ -4322,7 +4378,7 @@ async function exportFotos() {
   const rows = [];
   db.exec({
     sql: `SELECT client_uuid, created_at, entry_uuid, kategorie, titel, standort,
-                 kultur, gps_latitude, gps_longitude, device, mime, width, height, bytes, data
+                 kultur, gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data
           FROM fotos ORDER BY datetime(created_at) ASC, id ASC`,
     rowMode: "object",
     callback: (row) => {
@@ -4336,6 +4392,7 @@ async function exportFotos() {
         kultur: row.kultur,
         gpsLatitude: row.gps_latitude,
         gpsLongitude: row.gps_longitude,
+        notiz: row.notiz,
         device: row.device,
         mime: row.mime,
         width: row.width,
