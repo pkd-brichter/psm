@@ -308,3 +308,16 @@ body.mobile-mode .topnav-tab[data-section="lager"] {
 .site-footer a:hover {
   color: var(--text, #f1f5f9);
 }
+
+/* ===== Mittel-Liste ("Mittel für die Kultur"): eigener Scroll-Bereich ===== */
+/* Verhindert eine endlos lange Seite bei vielen Mitteln – auf Desktop, PWA
+   UND Mobile. Mobile überschreibt die Höhe ggf. kleiner (siehe m/index.astro). */
+.km-list {
+  max-height: 52vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  padding: 2px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
