@@ -34,6 +34,7 @@ import {
   getHistoryEntryById,
 } from "@scripts/core/storage/sqlite";
 import { printEntriesSafe } from "@scripts/features/shared/printing";
+import { renderCalculationSnapshot } from "@scripts/features/shared/calculationSnapshot";
 import { escapeHtml, formatDateFromIso } from "@scripts/core/utils";
 
 let started = false;
@@ -67,6 +68,83 @@ function entryDateLabel(e: any): string {
   );
 }
 
+/** Zeitpunkt der Erstellung (gespeichert am) als Datum + Uhrzeit. */
+function createdAtOf(e: any): string {
+  return e?.savedAt || e?.createdAt || e?.created_at || "";
+}
+
+function formatDateTime(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+let currentModal: HTMLElement | null = null;
+
+function closeViewer(): void {
+  currentModal?.remove();
+  currentModal = null;
+  document.body.classList.remove("m-modal-open");
+}
+
+async function openEntryViewer(id: string): Promise<void> {
+  try {
+    const entry = await getHistoryEntryById(id);
+    if (!entry) {
+      toast.error("Eintrag nicht gefunden.");
+      return;
+    }
+    const st = getState();
+    const created = createdAtOf(entry);
+    const modal = document.createElement("div");
+    modal.className = "m-modal";
+    modal.innerHTML = `
+      <div class="m-modal-backdrop" data-action="close-viewer"></div>
+      <div class="m-modal-sheet" role="dialog" aria-modal="true" aria-label="Erfassung ansehen">
+        <div class="m-modal-head">
+          <span class="m-modal-title"><i class="bi bi-file-earmark-text"></i> Erfassung</span>
+          <button type="button" class="m-modal-x" data-action="close-viewer" aria-label="Schließen"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="m-modal-body">
+          ${
+            created
+              ? `<p class="m-modal-created"><i class="bi bi-clock"></i> Erstellt am ${escapeHtml(
+                  formatDateTime(created)
+                )} Uhr</p>`
+              : ""
+          }
+          <div class="m-paper">${renderCalculationSnapshot(entry, st.fieldLabels, { showActions: false })}</div>
+        </div>
+        <div class="m-modal-foot">
+          <button type="button" class="m-share-btn" data-action="viewer-pdf">
+            <i class="bi bi-share"></i> Als PDF teilen / exportieren
+          </button>
+        </div>
+      </div>`;
+    modal.addEventListener("click", (ev) => {
+      const t = ev.target as HTMLElement | null;
+      if (t?.closest('[data-action="close-viewer"]')) {
+        closeViewer();
+      } else if (t?.closest('[data-action="viewer-pdf"]')) {
+        void printEntry(id);
+      }
+    });
+    document.body.appendChild(modal);
+    document.body.classList.add("m-modal-open");
+    currentModal = modal;
+  } catch (err) {
+    console.error("[Mobil] Viewer fehlgeschlagen", err);
+    toast.error("Eintrag konnte nicht geöffnet werden.");
+  }
+}
+
 async function loadRecent(): Promise<void> {
   const host = document.querySelector<HTMLElement>('[data-role="m-recent-list"]');
   if (!host) return;
@@ -84,20 +162,26 @@ async function loadRecent(): Promise<void> {
     }
     host.innerHTML = items
       .map((e) => {
-        const date = entryDateLabel(e);
-        const title = [e.kultur, e.ersteller].filter(Boolean).join(" · ");
+        const created = createdAtOf(e);
+        const when = created ? formatDateTime(created) : entryDateLabel(e);
+        const appDate = entryDateLabel(e);
+        const subParts = [e.kultur, e.ersteller].filter(Boolean);
+        if (appDate && created && appDate !== when.slice(0, appDate.length)) {
+          subParts.push(`Anwendung ${appDate}`);
+        }
+        const title = subParts.join(" · ");
         return `
-          <div class="m-recent-item">
+          <button type="button" class="m-recent-item" data-entry-id="${escapeHtml(
+            String(e.id)
+          )}">
             <div class="m-recent-info">
-              <span class="m-recent-date">${escapeHtml(date)}</span>
+              <span class="m-recent-date">${escapeHtml(when)}${
+                created ? " Uhr" : ""
+              }</span>
               <span class="m-recent-title">${escapeHtml(title || "Erfassung")}</span>
             </div>
-            <button type="button" class="m-pdf-btn" data-entry-id="${escapeHtml(
-              String(e.id)
-            )}">
-              <i class="bi bi-file-earmark-pdf"></i> PDF
-            </button>
-          </div>`;
+            <i class="bi bi-eye m-recent-chevron"></i>
+          </button>`;
       })
       .join("");
   } catch (err) {
@@ -227,10 +311,15 @@ async function start(): Promise<void> {
       void handleShare();
       return;
     }
-    const pdfBtn = target?.closest<HTMLElement>(".m-pdf-btn[data-entry-id]");
-    if (pdfBtn) {
-      void printEntry(pdfBtn.dataset.entryId || "");
+    const row = target?.closest<HTMLElement>(".m-recent-item[data-entry-id]");
+    if (row) {
+      void openEntryViewer(row.dataset.entryId || "");
     }
+  });
+
+  // Viewer mit Escape schließen.
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && currentModal) closeViewer();
   });
 
   patchState({ app: { ...getState().app, ready: true } });

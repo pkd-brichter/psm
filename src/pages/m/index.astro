@@ -189,8 +189,22 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 10px 0;
+    width: 100%;
+    text-align: left;
+    padding: 12px 4px;
+    border: none;
     border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .m-recent-item:active {
+    background: var(--color-surface-2, rgba(255, 255, 255, 0.05));
+  }
+  .m-recent-chevron {
+    flex: none;
+    color: var(--color-primary, #22c55e);
+    font-size: 1.2rem;
   }
   .m-recent-info {
     display: flex;
@@ -208,21 +222,94 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .m-pdf-btn {
-    flex: none;
-    display: inline-flex;
+  /* Viewer-Popup (Erfassung ansehen) */
+  body.m-modal-open {
+    overflow: hidden;
+  }
+  .m-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .m-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+  }
+  .m-modal-sheet {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 720px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface-1, #0f172a);
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+    border-radius: 16px 16px 0 0;
+    overflow: hidden;
+    animation: m-sheet-up 0.18s ease-out;
+  }
+  @keyframes m-sheet-up {
+    from { transform: translateY(24px); opacity: 0.6; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .m-modal-head {
+    display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border: 1px solid var(--color-primary, #22c55e);
-    border-radius: 9px;
-    background: transparent;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  }
+  .m-modal-title {
+    font-weight: 700;
+    color: var(--color-text);
+  }
+  .m-modal-title i {
     color: var(--color-primary, #22c55e);
-    font-weight: 600;
-    font-size: 0.9rem;
+    margin-right: 6px;
+  }
+  .m-modal-x {
+    border: none;
+    background: var(--color-surface-2, rgba(255, 255, 255, 0.06));
+    color: var(--color-text);
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    font-size: 1rem;
     cursor: pointer;
   }
-  .m-pdf-btn:active {
-    background: rgba(34, 197, 94, 0.15);
+  .m-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 16px;
+  }
+  .m-modal-created {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-bottom: 12px;
+  }
+  .m-modal-created i {
+    margin-right: 4px;
+  }
+  .m-modal-foot {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  }
+  .m-modal-foot .m-share-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+    font-size: 1rem;
+  }
+  /* Mittel-Tabelle im Viewer horizontal scrollbar (nicht abschneiden) */
+  .m-modal .calc-snapshot-card__mediums {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 </style>
