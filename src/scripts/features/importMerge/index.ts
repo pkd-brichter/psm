@@ -791,8 +791,35 @@ async function readZipPayload(buffer: Uint8Array): Promise<{
       : Array.isArray(payload.history)
         ? payload.history
         : [];
+  // Fotos: Bilddaten liegen als echte .jpg-Dateien im ZIP (klein, kein base64-
+  // Aufblähen). Je Foto-Metadatensatz das passende Bild holen und als base64
+  // wieder anhängen (appendFoto erwartet `data`). Alt-Format (data inline) bleibt
+  // ebenfalls gültig.
   const fotos = Array.isArray(payload?.fotos) ? payload.fotos : [];
+  for (const foto of fotos) {
+    if (foto?.data) continue; // bereits inline (Alt-Format)
+    const ref: string | null = foto?.file ? String(foto.file) : null;
+    const key = ref
+      ? availableNames.find(
+          (n) => n === ref || n.toLowerCase().endsWith(ref.toLowerCase()),
+        )
+      : null;
+    if (key && archive[key]) {
+      foto.data = bytesToBase64(archive[key]!);
+      if (!foto.mime) foto.mime = "image/jpeg";
+    }
+  }
   return { entries, metadata, fotos };
+}
+
+/** Rohe Bytes -> base64 (chunked, vermeidet Stack-Overflow bei großen Bildern). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 async function readJsonPayload(buffer: Uint8Array): Promise<{

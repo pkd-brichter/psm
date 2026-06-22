@@ -13,6 +13,21 @@
 import { exportSnapshot, exportFotos } from "@scripts/core/storage/sqlite";
 import { toast } from "@scripts/core/toast";
 import { setUnsharedCount } from "./unshared";
+import { zipSync, strToU8 } from "fflate";
+
+/** base64 (ohne data:-Präfix) -> rohe Bytes für echte Bilddatei im ZIP. */
+function base64ToBytes(base64: string): Uint8Array {
+  const bin = atob(base64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function fotoFileName(foto: any, index: number): string {
+  const id = foto?.clientUuid ? String(foto.clientUuid) : `foto-${index + 1}`;
+  const safe = id.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `fotos/${safe}.jpg`;
+}
 
 const DEVICE_LABEL_KEY = "psm-device-label";
 
@@ -46,7 +61,7 @@ function filenameSlug(label: string): string {
 }
 
 export async function shareMobileData(): Promise<void> {
-  let json: string;
+  let zipped: Uint8Array;
   const device = getDeviceLabel();
   try {
     const snapshot = await exportSnapshot();
@@ -56,23 +71,42 @@ export async function shareMobileData(): Promise<void> {
       device,
       exportedAt: new Date().toISOString(),
     };
-    // Fotos mitsenden (komprimiert, base64) – werden am PC per UUID gemergt.
+
+    // ZIP-Inhalt vorbereiten: die JPEGs werden als ECHTE Binärdateien abgelegt
+    // (kein base64-Aufblähen). In der JSON stehen nur die Foto-Metadaten + ein
+    // Dateiverweis (`file`); am PC werden Bild + Meta wieder zusammengeführt.
+    const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {};
     try {
-      const fotos = await exportFotos();
-      snapshot.fotos = fotos.items || [];
+      const fotos = (await exportFotos()).items || [];
+      snapshot.fotos = fotos.map((f: any, i: number) => {
+        const name = fotoFileName(f, i);
+        if (f?.data) {
+          // JPEG ist bereits komprimiert -> level 0 (kein erneutes Packen).
+          files[name] = [base64ToBytes(String(f.data)), { level: 0 }];
+        }
+        const { data, ...meta } = f; // base64 NICHT in die JSON
+        return { ...meta, file: name };
+      });
     } catch (err) {
       console.warn("[Share] Fotos konnten nicht angehängt werden", err);
     }
-    json = JSON.stringify(snapshot, null, 2);
+
+    files["pflanzenschutz.json"] = strToU8(JSON.stringify(snapshot, null, 2));
+    zipped = zipSync(files);
   } catch (err) {
     console.error("[Share] Export fehlgeschlagen", err);
     toast.error("Daten konnten nicht exportiert werden.");
     return;
   }
 
-  const filename = `psm-${filenameSlug(device)}-${timestampSlug()}.json`;
-  const blob = new Blob([json], { type: "application/json" });
-  const file = new File([blob], filename, { type: "application/json" });
+  const filename = `psm-${filenameSlug(device)}-${timestampSlug()}.zip`;
+  // Uint8Array -> eigener ArrayBuffer-Slice (BlobPart-typsicher, kein SAB).
+  const ab = zipped.buffer.slice(
+    zipped.byteOffset,
+    zipped.byteOffset + zipped.byteLength,
+  ) as ArrayBuffer;
+  const blob = new Blob([ab], { type: "application/zip" });
+  const file = new File([blob], filename, { type: "application/zip" });
 
   const nav = navigator as Navigator & {
     canShare?: (data?: any) => boolean;
@@ -88,7 +122,7 @@ export async function shareMobileData(): Promise<void> {
       await nav.share({
         files: [file],
         title: "PSM-Daten",
-        text: "Pflanzenschutz-Erfassung (JSON) – am Desktop über Import/Merge einspielen.",
+        text: "Pflanzenschutz-Erfassung (ZIP inkl. Fotos) – am Desktop über Import/Merge einspielen.",
       });
       setUnsharedCount(0);
       return;
