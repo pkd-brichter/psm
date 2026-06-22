@@ -39,6 +39,103 @@ import { escapeHtml, formatDateFromIso } from "@scripts/core/utils";
 
 let started = false;
 
+// Android-Installations-Prompt früh abfangen (feuert evtl. vor Banner-Init).
+let deferredInstallPrompt: any = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e: Event) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    document
+      .querySelector('[data-role="a2hs-install"]')
+      ?.classList.remove("d-none");
+  });
+}
+
+function isStandaloneDisplay(): boolean {
+  return (
+    (typeof window !== "undefined" &&
+      window.matchMedia?.("(display-mode: standalone)").matches) ||
+    (navigator as any).standalone === true
+  );
+}
+
+function detectOS(): "ios" | "android" | "other" {
+  const ua = navigator.userAgent.toLowerCase();
+  if (
+    /iphone|ipad|ipod/.test(ua) ||
+    ((navigator as any).platform === "MacIntel" &&
+      (navigator.maxTouchPoints ?? 0) > 1)
+  ) {
+    return "ios";
+  }
+  if (/android/.test(ua)) return "android";
+  return "other";
+}
+
+/**
+ * Hinweis "Zum Home-Bildschirm hinzufügen" – plattformgerecht (iOS/Android).
+ * Wichtig, weil iOS Safari lokale Daten (IndexedDB) nach ~7 Tagen Inaktivität
+ * löscht, solange die App nicht installiert ist.
+ */
+function initAddToHomeBanner(): void {
+  const banner = document.querySelector<HTMLElement>('[data-role="m-a2hs"]');
+  if (!banner) return;
+  if (isStandaloneDisplay()) return; // bereits installiert
+  try {
+    if (localStorage.getItem("psm-a2hs-dismissed") === "1") return;
+  } catch {
+    /* ignore */
+  }
+
+  const os = detectOS();
+  const textEl = banner.querySelector<HTMLElement>('[data-role="a2hs-text"]');
+  const installBtn = banner.querySelector<HTMLButtonElement>(
+    '[data-role="a2hs-install"]',
+  );
+
+  let msg: string;
+  if (os === "ios") {
+    msg =
+      'Daten dauerhaft sichern: Tippe unten auf <b>Teilen</b> (Symbol mit Pfeil ↑) und wähle <b>„Zum Home-Bildschirm"</b>. Sonst löscht der Browser die Daten nach ~7 Tagen.';
+  } else if (os === "android") {
+    msg =
+      'Daten dauerhaft sichern: Browser-Menü <b>⋮</b> → <b>„App installieren"</b> (bzw. „Zum Startbildschirm").';
+  } else {
+    msg =
+      'Tipp: Über das Browser-Menü als App installieren, damit die Daten dauerhaft erhalten bleiben.';
+  }
+  if (textEl) textEl.innerHTML = msg;
+
+  // Android: nativer Installieren-Button, wenn der Prompt verfügbar ist.
+  if (installBtn && deferredInstallPrompt) {
+    installBtn.classList.remove("d-none");
+  }
+  installBtn?.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    try {
+      await deferredInstallPrompt.userChoice;
+    } catch {
+      /* ignore */
+    }
+    deferredInstallPrompt = null;
+    banner.classList.add("d-none");
+  });
+
+  banner
+    .querySelector('[data-action="a2hs-dismiss"]')
+    ?.addEventListener("click", () => {
+      banner.classList.add("d-none");
+      try {
+        localStorage.setItem("psm-a2hs-dismissed", "1");
+      } catch {
+        /* ignore */
+      }
+    });
+
+  banner.classList.remove("d-none");
+}
+
 function renderShareStatus(): void {
   const host = document.querySelector<HTMLElement>('[data-role="m-share-status"]');
   if (!host) return;
@@ -260,6 +357,7 @@ async function start(): Promise<void> {
 
   document.body.classList.add("mobile-mode", "m-page", "bg-app");
   initToastContainer();
+  initAddToHomeBanner();
   await loadDefaultsConfig();
 
   const services = {

@@ -13,6 +13,17 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     </header>
 
     <main class="m-main">
+      <div class="m-a2hs d-none" data-role="m-a2hs">
+        <i class="bi bi-house-add-fill m-a2hs-icon"></i>
+        <span class="m-a2hs-text" data-role="a2hs-text"></span>
+        <button type="button" class="m-a2hs-install d-none" data-role="a2hs-install">
+          <i class="bi bi-download"></i> Installieren
+        </button>
+        <button type="button" class="m-a2hs-x" data-action="a2hs-dismiss" aria-label="Hinweis schließen">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+
       <label class="m-device">
         <span class="m-device-label">Dieses Gerät (erscheint beim Import am PC)</span>
         <input type="text" class="form-control" data-role="m-device-label" placeholder="z. B. Handy Abbas" />
@@ -311,5 +322,57 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   .m-modal .calc-snapshot-card__mediums {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* "Zum Home-Bildschirm"-Hinweis (gegen iOS 7-Tage-Datenlöschung) */
+  .m-a2hs {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 12px;
+    font-size: 0.85rem;
+    color: var(--color-text);
+    line-height: 1.4;
+  }
+  .m-a2hs-icon {
+    color: #3b82f6;
+    font-size: 1.2rem;
+    flex: none;
+    margin-top: 1px;
+  }
+  .m-a2hs-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .m-a2hs-text b {
+    color: #fff;
+  }
+  .m-a2hs-install {
+    flex: none;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 12px;
+    border: none;
+    border-radius: 8px;
+    background: #3b82f6;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .m-a2hs-x {
+    flex: none;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+    cursor: pointer;
+    padding: 2px;
   }
 </style>
