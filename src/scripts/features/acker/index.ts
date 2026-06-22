@@ -45,6 +45,81 @@ export function initAcker(container: Element | null, services: Services): void {
   const saveTimers = new Map<string, any>();
   let standorteLayer: any = null;
 
+  // Export der Flächen + Standorte als GeoJSON (WGS84/CRS84) – Standard-Format
+  // für QGIS, FMIS und (via Shapefile) Traktor-Terminals (ISOBUS/ISO-XML-Welt).
+  function exportGeoJson(): void {
+    const features: any[] = [];
+    fields.forEach((fl) => {
+      const ll = fl.latlngs || [];
+      if (ll.length < 3) return;
+      const ring = ll.map((a: any) => [Number(a[1]), Number(a[0])]); // [lng,lat]
+      const f0 = ring[0];
+      const fl_ = ring[ring.length - 1];
+      if (f0[0] !== fl_[0] || f0[1] !== fl_[1]) ring.push([f0[0], f0[1]]); // Ring schließen
+      features.push({
+        type: "Feature",
+        geometry: { type: "Polygon", coordinates: [ring] },
+        properties: {
+          name: fl.name || "",
+          kultur: fl.kultur || null,
+          eppoCode: fl.eppoCode || null,
+          flaeche_m2: Math.round(fl.result?.areaM2 || 0),
+          flaeche_ha: Number(((fl.result?.areaM2 || 0) / 10000).toFixed(4)),
+          beete: fl.result?.beds?.length || 0,
+          beetmeter_m: Math.round(fl.result?.bedMeters || 0),
+          pflanzen: fl.result?.plants || 0,
+          bettbreite_m: fl.params?.bedW ?? null,
+          wegbreite_m: fl.params?.pathW ?? null,
+          reihenabstand_m: fl.params?.rowSp ?? null,
+          pflanzabstand_m: fl.params?.inRowSp ?? null,
+          ausrichtung_grad: fl.params?.angle ?? null,
+        },
+      });
+    });
+    const points = extractSliceItems<any>(services.state.getState().gps?.points) || [];
+    points.forEach((p: any) => {
+      const lat = Number(p.latitude);
+      const lng = Number(p.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const areaQm = Number(p.nutzflaecheQm);
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [lng, lat] },
+        properties: {
+          name: p.name || "Standort",
+          typ: "standort",
+          flaeche_m2: Number.isFinite(areaQm) && areaQm > 0 ? Math.round(areaQm) : null,
+          kind: p.kind || null,
+        },
+      });
+    });
+    if (!features.length) {
+      toast.warning("Keine Flächen oder Standorte zum Exportieren.");
+      return;
+    }
+    const fc = {
+      type: "FeatureCollection",
+      name: "PSM Acker-Planer",
+      crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+      features,
+    };
+    try {
+      const blob = new Blob([JSON.stringify(fc, null, 2)], { type: "application/geo+json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "acker-flaechen.geojson";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(`${features.length} Objekt(e) als GeoJSON exportiert.`);
+    } catch (err) {
+      console.error("[Acker] GeoJSON-Export fehlgeschlagen", err);
+      toast.error("Export fehlgeschlagen.");
+    }
+  }
+
   // Vorhandene Freiland-Standorte (aus GPS-Punkten: Name + Koordinaten + Fläche)
   // als Marker auf der Karte anzeigen.
   function renderStandorte(): void {
@@ -379,6 +454,7 @@ export function initAcker(container: Element | null, services: Services): void {
     map.on("click", onMapClick);
 
     el('[data-role="acker-draw"]')!.addEventListener("click", () => setDraw(true));
+    el('[data-role="acker-export"]')?.addEventListener("click", exportGeoJson);
     el('[data-role="acker-finish"]')!.addEventListener("click", finishDraw);
     el('[data-role="acker-cancel"]')!.addEventListener("click", () => setDraw(false));
     el('[data-role="acker-go"]')!.addEventListener("click", geocode);
@@ -487,6 +563,12 @@ function renderShell(): string {
             <div class="t-row"><span>Beete gesamt</span><b data-t="beds">–</b></div>
             <div class="t-row"><span>Beetmeter gesamt</span><b data-t="meters">–</b></div>
             <div class="t-row" style="margin-top:4px"><span>Pflanzen gesamt</span><b class="big" data-t="plants">–</b></div>
+          </div>
+          <div class="acker-export-box" style="margin:12px 0">
+            <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-export" style="width:100%">
+              <i class="bi bi-geo me-1"></i>Als GeoJSON exportieren
+            </button>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:5px;line-height:1.35">Flächen + Standorte (WGS84) für QGIS / FMIS / Traktor-Terminals.</div>
           </div>
           <div data-role="acker-list"></div>
           <div class="acker-empty" data-role="acker-empty">Noch keine Fläche.<br>Zum Acker navigieren, dann <b>Neue Fläche zeichnen</b>.</div>
