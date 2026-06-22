@@ -137,6 +137,24 @@ function initAddToHomeBanner(): void {
   banner.classList.remove("d-none");
 }
 
+/**
+ * Bereichswechsel (Tab-Leiste unten): PSM/Erfassung ↔ Fotos. Getrennte
+ * Bereiche statt einer endlos langen Scroll-Seite.
+ */
+function setMobileView(view: string): void {
+  const target = view === "fotos" ? "fotos" : "psm";
+  document
+    .querySelectorAll<HTMLElement>(".m-view[data-mview]")
+    .forEach((el) => el.classList.toggle("d-none", el.dataset.mview !== target));
+  document
+    .querySelectorAll<HTMLElement>(".m-nav-btn[data-mview]")
+    .forEach((el) =>
+      el.classList.toggle("is-active", el.dataset.mview === target),
+    );
+  // Beim Bereichswechsel nach oben scrollen (frischer Bereich von oben).
+  window.scrollTo({ top: 0 });
+}
+
 function renderShareStatus(): void {
   const host = document.querySelector<HTMLElement>('[data-role="m-share-status"]');
   if (!host) return;
@@ -423,6 +441,11 @@ async function start(): Promise<void> {
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-action="m-share"]')) {
       void handleShare();
+      return;
+    }
+    const navBtn = target?.closest<HTMLElement>(".m-nav-btn[data-mview]");
+    if (navBtn) {
+      setMobileView(navBtn.dataset.mview || "psm");
       return;
     }
     const row = target?.closest<HTMLElement>(".m-recent-item[data-entry-id]");

@@ -13,36 +13,53 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     </header>
 
     <main class="m-main">
-      <div class="m-a2hs d-none" data-role="m-a2hs">
-        <i class="bi bi-house-add-fill m-a2hs-icon"></i>
-        <span class="m-a2hs-text" data-role="a2hs-text"></span>
-        <button type="button" class="m-a2hs-install d-none" data-role="a2hs-install">
-          <i class="bi bi-download"></i> Installieren
-        </button>
-        <button type="button" class="m-a2hs-x" data-action="a2hs-dismiss" aria-label="Hinweis schließen">
-          <i class="bi bi-x-lg"></i>
-        </button>
-      </div>
+      <!-- Bereich: PSM / Erfassung -->
+      <section class="m-view" data-mview="psm">
+        <div class="m-a2hs d-none" data-role="m-a2hs">
+          <i class="bi bi-house-add-fill m-a2hs-icon"></i>
+          <span class="m-a2hs-text" data-role="a2hs-text"></span>
+          <button type="button" class="m-a2hs-install d-none" data-role="a2hs-install">
+            <i class="bi bi-download"></i> Installieren
+          </button>
+          <button type="button" class="m-a2hs-x" data-action="a2hs-dismiss" aria-label="Hinweis schließen">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
 
-      <label class="m-device">
-        <span class="m-device-label">Dieses Gerät (erscheint beim Import am PC)</span>
-        <input type="text" class="form-control" data-role="m-device-label" placeholder="z. B. Handy Abbas" />
-      </label>
+        <label class="m-device">
+          <span class="m-device-label">Dieses Gerät (erscheint beim Import am PC)</span>
+          <input type="text" class="form-control" data-role="m-device-label" placeholder="z. B. Handy Abbas" />
+        </label>
 
-      <div data-feature="calculation"></div>
+        <div data-feature="calculation"></div>
 
-      <section class="m-recent">
-        <h2 class="m-recent-h"><i class="bi bi-clock-history"></i> Letzte Erfassungen</h2>
-        <p class="m-recent-hint">Als PDF erstellen – auch nachträglich, um zu sehen was &amp; wie viel gebraucht wird.</p>
-        <div data-role="m-recent-list"></div>
+        <section class="m-recent">
+          <h2 class="m-recent-h"><i class="bi bi-clock-history"></i> Letzte Erfassungen</h2>
+          <p class="m-recent-hint">Als PDF erstellen – auch nachträglich, um zu sehen was &amp; wie viel gebraucht wird.</p>
+          <div data-role="m-recent-list"></div>
+        </section>
       </section>
 
-      <section class="m-recent">
-        <h2 class="m-recent-h"><i class="bi bi-camera"></i> Fotos</h2>
-        <p class="m-recent-hint">Kultur/Nachweis fotografieren – wird komprimiert gespeichert und beim Teilen mitgesendet.</p>
+      <!-- Bereich: Fotos (komplett eigener Bereich) -->
+      <section class="m-view d-none" data-mview="fotos">
+        <div class="m-view-head">
+          <h2 class="m-view-title"><i class="bi bi-camera"></i> Fotos</h2>
+          <p class="m-view-hint">Kultur/Nachweis fotografieren – wird komprimiert gespeichert und beim Teilen mitgesendet.</p>
+        </div>
         <div data-feature="fotos"></div>
       </section>
     </main>
+
+    <nav class="m-nav no-print" data-role="m-nav">
+      <button type="button" class="m-nav-btn is-active" data-mview="psm">
+        <i class="bi bi-clipboard2-check"></i>
+        <span>PSM</span>
+      </button>
+      <button type="button" class="m-nav-btn" data-mview="fotos">
+        <i class="bi bi-camera"></i>
+        <span>Fotos</span>
+      </button>
+    </nav>
   </div>
 
   <script>
@@ -135,6 +152,65 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   }
   .m-main {
     padding: 14px;
+    /* Platz für die fixierte untere Tab-Leiste */
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+  .m-view-head {
+    margin-bottom: 12px;
+  }
+  .m-view-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 4px;
+  }
+  .m-view-title i {
+    color: var(--color-primary, #22c55e);
+    margin-right: 6px;
+  }
+  .m-view-hint {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+
+  /* Untere Tab-Leiste: getrennte Bereiche statt einer langen Scroll-Seite */
+  .m-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    background: var(--color-surface-1, #fff);
+    border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
+  }
+  .m-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 9px 4px 8px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .m-nav-btn i {
+    font-size: 1.4rem;
+    line-height: 1;
+  }
+  .m-nav-btn.is-active {
+    color: var(--color-primary, #22c55e);
+  }
+  .m-nav-btn.is-active i {
+    transform: translateY(-1px);
   }
   .m-device {
     display: block;
