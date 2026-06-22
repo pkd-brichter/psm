@@ -1,42 +1,30 @@
 ---
-// Shell – linke Sidebar-Navigation der Pestalozzi-Plattform
-// Icons + Namen immer sichtbar (nicht ein-/ausklappbar). Bereichswechsel via data-section.
+// Shell – schmale, icon-basierte Bereichs-Sidebar (Portainer-Stil).
+// Sidebar = NUR Bereichswechsel (data-area). Die zu einem Bereich gehörenden
+// Unter-Ansichten erscheinen oben im Header (siehe index.astro [data-region="topnav"]),
+// befüllt durch shellClient.ts.
 ---
 
 <aside data-region="shell" class="app-sidebar d-none no-print">
-  <a class="sidebar-brand" href="#" id="brand-link">
+  <a class="sidebar-brand" href="#" id="brand-link" data-area="start" title="Start">
     <i class="bi bi-leaf-fill" style="color: var(--color-primary);"></i>
-    <div class="brand-copy">
-      <span class="brand-title" id="brand-title">Pflanzenschutz</span>
-      <span class="brand-tagline" id="brand-tagline"></span>
-    </div>
   </a>
 
-  <span id="offline-indicator" class="d-none sidebar-offline">
-    <i class="bi bi-wifi-off me-1"></i>Offline
-  </span>
-
   <nav class="sidebar-nav">
-    <button class="nav-btn" data-section="dashboard">
-      <i class="bi bi-grid-1x2"></i><span>Start</span>
+    <button class="nav-btn" data-area="start" title="Start" aria-label="Start">
+      <i class="bi bi-grid-1x2"></i>
     </button>
-    <button class="nav-btn" data-section="calc">
-      <i class="bi bi-pencil-square"></i><span>Neu erfassen</span>
+    <button class="nav-btn" data-area="psm" title="PSM – Pflanzenschutz" aria-label="PSM">
+      <i class="bi bi-flower1"></i>
     </button>
-    <button class="nav-btn" data-section="documentation">
-      <i class="bi bi-list-ul"></i><span>Übersicht</span>
+    <button class="nav-btn" data-area="acker" title="Acker-Planer" aria-label="Acker-Planer">
+      <i class="bi bi-map"></i>
     </button>
-    <button class="nav-btn" data-section="lager">
-      <i class="bi bi-box-seam"></i><span>PSM-Lager</span>
+    <button class="nav-btn" data-area="settings" title="Einstellungen" aria-label="Einstellungen">
+      <i class="bi bi-gear"></i>
     </button>
-    <button class="nav-btn" data-section="acker">
-      <i class="bi bi-map"></i><span>Acker-Planer</span>
-    </button>
-    <button class="nav-btn" data-section="settings">
-      <i class="bi bi-gear"></i><span>Einstellungen</span>
-    </button>
-    <button class="nav-btn nav-btn-share" data-action="share-data">
-      <i class="bi bi-share"></i><span>Daten teilen</span>
+    <button class="nav-btn nav-btn-share" data-action="share-data" title="Daten teilen" aria-label="Daten teilen">
+      <i class="bi bi-share"></i>
     </button>
   </nav>
 
@@ -46,20 +34,18 @@
       target="_blank"
       rel="noopener noreferrer"
       title="Info & Lizenz"
+      aria-label="Info & Lizenz"
     >
-      <i class="bi bi-info-circle me-1"></i>Info
+      <i class="bi bi-info-circle"></i>
     </a>
-    <div class="d-flex align-items-center gap-2">
-      <small id="app-version" class="text-muted"></small>
-      <button
-        type="button"
-        class="monitor-toggle"
-        data-action="debug-overlay-toggle"
-        title="Performance Monitor aktivieren"
-      >
-        <i class="bi bi-activity"></i>
-      </button>
-    </div>
+    <button
+      type="button"
+      class="monitor-toggle"
+      data-action="debug-overlay-toggle"
+      title="Performance Monitor aktivieren"
+    >
+      <i class="bi bi-activity"></i>
+    </button>
   </div>
 </aside>
 
@@ -88,7 +74,7 @@
     }
   }
 
-  /* Mobile-Modus: schlanker Erfassungs-Client. Schwere/zentrale Bereiche aus,
+  /* Mobile-Modus: schlanker Erfassungs-Client. Acker/Einstellungen aus,
      dafür "Daten teilen" sichtbar. Desktop bleibt unverändert. */
   .nav-btn-share {
     display: none;
@@ -96,9 +82,8 @@
   :global(body.mobile-mode) .nav-btn-share {
     display: flex;
   }
-  :global(body.mobile-mode) .nav-btn[data-section="lager"],
-  :global(body.mobile-mode) .nav-btn[data-section="acker"],
-  :global(body.mobile-mode) .nav-btn[data-section="settings"] {
+  :global(body.mobile-mode) .nav-btn[data-area="acker"],
+  :global(body.mobile-mode) .nav-btn[data-area="settings"] {
     display: none;
   }
 </style>

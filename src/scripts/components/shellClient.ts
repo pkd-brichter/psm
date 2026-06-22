@@ -1,9 +1,89 @@
 import {
   type AppState,
+  getState,
   subscribeState,
   updateSlice,
 } from "@scripts/core/state";
 import { emit } from "@scripts/core/eventBus";
+
+type Section = AppState["app"]["activeSection"];
+
+interface AreaSection {
+  section: Section;
+  label: string;
+  icon: string;
+}
+
+interface AreaDef {
+  id: string;
+  label: string;
+  icon: string;
+  sections: AreaSection[];
+}
+
+/**
+ * Top-Level-Bereiche (Sidebar, nur Icons). Die `sections` jedes Bereichs werden
+ * als Reiter oben im Header (topnav) angezeigt. Die App ist eine Plattform mit
+ * mehreren Apps – PSM (Pflanzenschutz) ist nur einer davon.
+ */
+const AREAS: AreaDef[] = [
+  {
+    id: "start",
+    label: "Start",
+    icon: "bi-grid-1x2",
+    sections: [{ section: "dashboard", label: "Übersicht", icon: "bi-grid-1x2" }],
+  },
+  {
+    id: "psm",
+    label: "PSM",
+    icon: "bi-flower1",
+    sections: [
+      { section: "calc", label: "Neu erfassen", icon: "bi-pencil-square" },
+      { section: "documentation", label: "Übersicht", icon: "bi-list-ul" },
+      { section: "lager", label: "Lager", icon: "bi-box-seam" },
+    ],
+  },
+  {
+    id: "acker",
+    label: "Acker-Planer",
+    icon: "bi-map",
+    sections: [{ section: "acker", label: "Acker-Planer", icon: "bi-map" }],
+  },
+  {
+    id: "settings",
+    label: "Einstellungen",
+    icon: "bi-gear",
+    sections: [{ section: "settings", label: "Einstellungen", icon: "bi-gear" }],
+  },
+];
+
+/**
+ * Ordnet JEDE mögliche Section einem Bereich zu (auch Unter-Sections, die nicht
+ * als Header-Reiter erscheinen, z. B. die internen Einstellungs-Ansichten).
+ */
+const SECTION_TO_AREA: Partial<Record<Section, string>> = {
+  dashboard: "start",
+  calc: "psm",
+  documentation: "psm",
+  lager: "psm",
+  history: "psm",
+  report: "psm",
+  acker: "acker",
+  settings: "settings",
+  gps: "settings",
+  lookup: "settings",
+  zulassung: "settings",
+  import: "settings",
+};
+
+function areaById(id: string): AreaDef | undefined {
+  return AREAS.find((a) => a.id === id);
+}
+
+function areaForSection(section: Section): AreaDef | undefined {
+  const id = SECTION_TO_AREA[section];
+  return id ? areaById(id) : undefined;
+}
 
 function initOfflineIndicator(): void {
   const indicator = document.getElementById("offline-indicator");
@@ -19,32 +99,89 @@ function initOfflineIndicator(): void {
   window.addEventListener("offline", updateStatus);
 }
 
-function initShell(): void {
-  const buttons = document.querySelectorAll<HTMLButtonElement>(".nav-btn");
+function setActiveSection(section: Section): void {
+  if (getState().app.activeSection === section) {
+    return;
+  }
+  updateSlice("app", (app) => ({ ...app, activeSection: section }));
+  emit("app:sectionChanged", section);
+}
 
-  // Initialize offline indicator
+function initShell(): void {
   initOfflineIndicator();
 
-  buttons.forEach((button) => {
-    button.addEventListener("click", (event) => {
-      const target = event.currentTarget;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-      const section = target.dataset.section as
-        | AppState["app"]["activeSection"]
-        | undefined;
-      if (!section) {
-        return;
-      }
+  const sidebarButtons =
+    document.querySelectorAll<HTMLButtonElement>(".nav-btn[data-area]");
+  const brandStart = document.getElementById("brand-link");
+  const tabsHost = document.getElementById("topnav-tabs");
+  const areaIcon = document.getElementById("topnav-area-icon");
+  const areaLabel = document.getElementById("topnav-area-label");
 
-      updateSlice("app", (app) => ({ ...app, activeSection: section }));
+  // Merkt sich pro Bereich die zuletzt aktive Section, damit ein erneuter
+  // Klick auf den Bereich dort fortsetzt, wo man war.
+  const lastSectionByArea: Record<string, Section> = {};
+  for (const area of AREAS) {
+    lastSectionByArea[area.id] = area.sections[0].section;
+  }
 
-      buttons.forEach((btn) => btn.classList.remove("active"));
-      button.classList.add("active");
+  let renderedAreaId: string | null = null;
 
-      emit("app:sectionChanged", section);
+  function renderTabs(area: AreaDef, activeSection: Section): void {
+    if (!tabsHost) return;
+    // Bereiche mit nur einer Ansicht brauchen keine Reiter (Bereichstitel reicht).
+    if (area.sections.length <= 1) {
+      tabsHost.innerHTML = "";
+      return;
+    }
+    tabsHost.innerHTML = area.sections
+      .map(
+        (s) => `
+        <button type="button" class="topnav-tab${
+          s.section === activeSection ? " active" : ""
+        }" data-section="${s.section}">
+          <i class="bi ${s.icon}"></i><span>${s.label}</span>
+        </button>`,
+      )
+      .join("");
+  }
+
+  function highlightTabs(activeSection: Section): void {
+    if (!tabsHost) return;
+    tabsHost
+      .querySelectorAll<HTMLButtonElement>(".topnav-tab")
+      .forEach((tab) => {
+        tab.classList.toggle(
+          "active",
+          tab.dataset.section === activeSection,
+        );
+      });
+  }
+
+  // Klick auf einen Bereich in der Sidebar.
+  const handleArea = (areaId: string) => {
+    const area = areaById(areaId);
+    if (!area || !getState().app.hasDatabase) return;
+    setActiveSection(lastSectionByArea[areaId] ?? area.sections[0].section);
+  };
+
+  sidebarButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const areaId = btn.dataset.area;
+      if (areaId) handleArea(areaId);
     });
+  });
+  brandStart?.addEventListener("click", (event) => {
+    event.preventDefault();
+    handleArea("start");
+  });
+
+  // Klick auf einen Reiter im Header.
+  tabsHost?.addEventListener("click", (event) => {
+    const tab = (event.target as HTMLElement | null)?.closest(
+      ".topnav-tab",
+    ) as HTMLButtonElement | null;
+    const section = tab?.dataset.section as Section | undefined;
+    if (section) setActiveSection(section);
   });
 
   // "Daten teilen" (nur Mobile-Modus sichtbar) – Share-Sheet/Download.
@@ -61,11 +198,10 @@ function initShell(): void {
       });
   });
 
-  subscribeState((state) => {
+  const syncUi = (state: AppState) => {
     const brandTitle = document.getElementById("brand-title");
     const brandTagline = document.getElementById("brand-tagline");
     const appVersion = document.getElementById("app-version");
-
     if (brandTitle && state.company.name) {
       brandTitle.textContent = state.company.name;
     }
@@ -76,22 +212,37 @@ function initShell(): void {
       appVersion.textContent = `v${state.app.version}`;
     }
 
-    buttons.forEach((btn) => {
-      const section = btn.getAttribute("data-section");
-      btn.disabled = !state.app.hasDatabase;
-      if (section === state.app.activeSection) {
-        btn.classList.add("active");
-      } else {
-        btn.classList.remove("active");
-      }
-      if (!state.app.hasDatabase) {
-        btn.classList.remove("active");
-      }
-    });
-  });
+    const hasDb = state.app.hasDatabase;
+    const activeSection = state.app.activeSection;
+    const area = areaForSection(activeSection);
 
-  // Initial active state wird durch subscribeState gesetzt - nicht manuell setzen
-  // da dies Konflikte verursacht wenn man zwischen Bereichen wechselt
+    // Merken, wo wir im Bereich zuletzt waren.
+    if (area && SECTION_TO_AREA[activeSection] === area.id) {
+      lastSectionByArea[area.id] = activeSection;
+    }
+
+    // Sidebar: aktiven Bereich hervorheben + Disabled-Status.
+    sidebarButtons.forEach((btn) => {
+      btn.disabled = !hasDb;
+      const isActive = hasDb && area?.id === btn.dataset.area;
+      btn.classList.toggle("active", Boolean(isActive));
+    });
+
+    // Header: Bereichstitel + Reiter.
+    if (area) {
+      if (areaIcon) areaIcon.className = `bi ${area.icon} topnav-area-icon`;
+      if (areaLabel) areaLabel.textContent = area.label;
+      if (renderedAreaId !== area.id) {
+        renderTabs(area, activeSection);
+        renderedAreaId = area.id;
+      } else {
+        highlightTabs(activeSection);
+      }
+    }
+  };
+
+  subscribeState(syncUi);
+  syncUi(getState());
 
   let isPrinting = false;
   const activeDocumentTitle = document.title || "Pflanzenschutz";

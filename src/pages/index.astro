@@ -8,6 +8,23 @@ import Shell from '../components/Shell.astro';
   <Shell />
   
   <main data-region="main" class="main-content d-none">
+    <header data-region="topnav" class="app-topnav no-print">
+      <div class="topnav-context">
+        <i class="bi topnav-area-icon" id="topnav-area-icon" aria-hidden="true"></i>
+        <span class="topnav-area-label" id="topnav-area-label"></span>
+        <span id="offline-indicator" class="d-none topnav-offline">
+          <i class="bi bi-wifi-off me-1"></i>Offline
+        </span>
+      </div>
+      <nav class="topnav-tabs" id="topnav-tabs" aria-label="Ansichten"></nav>
+      <div class="topnav-meta">
+        <div class="topnav-brand">
+          <span class="brand-title" id="brand-title"></span>
+          <span class="brand-tagline" id="brand-tagline"></span>
+        </div>
+        <small id="app-version" class="text-muted"></small>
+      </div>
+    </header>
     <div class="container py-4">
       <!-- Dashboard / Start Section (Standard-Ansicht) -->
       <div id="section-dashboard" class="content-section" style="display: block;">
