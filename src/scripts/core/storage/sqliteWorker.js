@@ -1213,6 +1213,35 @@ function ensureImportLogTable(targetDb = db) {
   `);
 }
 
+// Fotos (Nachweis/allgemein): komprimiertes Bild als base64 (TEXT) + Metadaten.
+// Generisch nutzbar (nicht nur Kulturen). client_uuid = stabiler Ausweis für
+// Merge/Dedup (Handy -> zentrale DB).
+function ensureFotosTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS fotos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_uuid TEXT,
+      created_at TEXT NOT NULL,
+      entry_uuid TEXT,
+      kategorie TEXT,
+      titel TEXT,
+      standort TEXT,
+      kultur TEXT,
+      gps_latitude REAL,
+      gps_longitude REAL,
+      device TEXT,
+      mime TEXT,
+      width INTEGER,
+      height INTEGER,
+      bytes INTEGER,
+      data TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_fotos_created ON fotos(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_fotos_uuid ON fotos(client_uuid);
+  `);
+}
+
 function mapLagerRow(row) {
   if (!row) return null;
   return {
@@ -1915,6 +1944,21 @@ self.onmessage = async function (event) {
         break;
       case "listImportLog":
         result = await listImportLog(payload);
+        break;
+      case "appendFoto":
+        result = await appendFoto(payload);
+        break;
+      case "listFotos":
+        result = await listFotos(payload);
+        break;
+      case "getFotoData":
+        result = await getFotoData(payload);
+        break;
+      case "exportFotos":
+        result = await exportFotos();
+        break;
+      case "deleteFoto":
+        result = await deleteFoto(payload);
         break;
       case "deleteArchiveLog":
         result = await deleteArchiveLog(payload);
@@ -2812,6 +2856,24 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 18 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 19: Fotos (Nachweis/allgemein)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const fotosTableMissing = !hasTable(db, "fotos");
+  if (fotosTableMissing || postMigrationVersion < 19) {
+    console.log("Migrating database to version 19 (fotos)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureFotosTable(db);
+      db.exec("PRAGMA user_version = 19");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 19 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 19 failed:", error);
       throw error;
     }
   }
@@ -4154,6 +4216,147 @@ async function listImportLog(payload = {}) {
     },
   });
   return { items: rows };
+}
+
+// ===== FOTOS =====
+async function appendFoto(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const clientUuid = payload.clientUuid ? String(payload.clientUuid) : null;
+  if (clientUuid) {
+    try {
+      const existing = db.selectValue(
+        "SELECT id FROM fotos WHERE client_uuid = ? LIMIT 1",
+        [clientUuid]
+      );
+      if (existing != null) {
+        return { id: existing, duplicate: true };
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  if (!payload.data) throw new Error("Foto-Daten fehlen");
+  const createdAt = payload.createdAt || new Date().toISOString();
+  const stmt = db.prepare(
+    `INSERT INTO fotos
+      (client_uuid, created_at, entry_uuid, kategorie, titel, standort, kultur,
+       gps_latitude, gps_longitude, device, mime, width, height, bytes, data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  stmt
+    .bind([
+      clientUuid,
+      createdAt,
+      payload.entryUuid != null ? String(payload.entryUuid) : null,
+      payload.kategorie != null ? String(payload.kategorie) : null,
+      payload.titel != null ? String(payload.titel) : null,
+      payload.standort != null ? String(payload.standort) : null,
+      payload.kultur != null ? String(payload.kultur) : null,
+      payload.gpsLatitude ?? null,
+      payload.gpsLongitude ?? null,
+      payload.device != null ? String(payload.device) : null,
+      payload.mime != null ? String(payload.mime) : "image/jpeg",
+      payload.width ?? null,
+      payload.height ?? null,
+      payload.bytes ?? null,
+      String(payload.data),
+    ])
+    .step();
+  stmt.finalize();
+  const id = db.selectValue("SELECT last_insert_rowid()");
+  return { id, duplicate: false };
+}
+
+// Liste OHNE Bilddaten (für Galerie – performant).
+async function listFotos(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const limit = Math.min(Math.max(Number(payload?.limit) || 200, 1), 1000);
+  const rows = [];
+  db.exec({
+    sql: `SELECT id, client_uuid, created_at, entry_uuid, kategorie, titel,
+                 standort, kultur, gps_latitude, gps_longitude, device, mime,
+                 width, height, bytes
+          FROM fotos ORDER BY datetime(created_at) DESC, id DESC LIMIT ?`,
+    bind: [limit],
+    rowMode: "object",
+    callback: (row) => {
+      rows.push({
+        id: row.id,
+        clientUuid: row.client_uuid,
+        createdAt: row.created_at,
+        entryUuid: row.entry_uuid,
+        kategorie: row.kategorie,
+        titel: row.titel,
+        standort: row.standort,
+        kultur: row.kultur,
+        gpsLatitude: row.gps_latitude,
+        gpsLongitude: row.gps_longitude,
+        device: row.device,
+        mime: row.mime,
+        width: row.width,
+        height: row.height,
+        bytes: row.bytes,
+      });
+    },
+  });
+  return { items: rows };
+}
+
+// Bilddaten (base64) eines Fotos – lazy nachladen.
+async function getFotoData(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const id = payload && payload.id != null ? Number(payload.id) : null;
+  if (id == null) return { data: null };
+  const data = db.selectValue("SELECT data FROM fotos WHERE id = ? LIMIT 1", [id]);
+  const mime = db.selectValue("SELECT mime FROM fotos WHERE id = ? LIMIT 1", [id]);
+  return { data: data ?? null, mime: mime || "image/jpeg" };
+}
+
+// Alle Fotos MIT Daten (für Export/Teilen).
+async function exportFotos() {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const rows = [];
+  db.exec({
+    sql: `SELECT client_uuid, created_at, entry_uuid, kategorie, titel, standort,
+                 kultur, gps_latitude, gps_longitude, device, mime, width, height, bytes, data
+          FROM fotos ORDER BY datetime(created_at) ASC, id ASC`,
+    rowMode: "object",
+    callback: (row) => {
+      rows.push({
+        clientUuid: row.client_uuid,
+        createdAt: row.created_at,
+        entryUuid: row.entry_uuid,
+        kategorie: row.kategorie,
+        titel: row.titel,
+        standort: row.standort,
+        kultur: row.kultur,
+        gpsLatitude: row.gps_latitude,
+        gpsLongitude: row.gps_longitude,
+        device: row.device,
+        mime: row.mime,
+        width: row.width,
+        height: row.height,
+        bytes: row.bytes,
+        data: row.data,
+      });
+    },
+  });
+  return { items: rows };
+}
+
+async function deleteFoto(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const id = payload && payload.id != null ? Number(payload.id) : null;
+  if (id == null) throw new Error("Foto-ID fehlt");
+  const stmt = db.prepare("DELETE FROM fotos WHERE id = ?");
+  stmt.bind([id]).step();
+  stmt.finalize();
+  return { success: true };
 }
 
 async function deleteArchiveLog(payload = {}) {

@@ -837,6 +837,72 @@ export async function listImportLog(
   return await callWorker("listImportLog", { limit });
 }
 
+// ===== Fotos =====
+export interface FotoMeta {
+  id: number;
+  clientUuid: string | null;
+  createdAt: string;
+  entryUuid: string | null;
+  kategorie: string | null;
+  titel: string | null;
+  standort: string | null;
+  kultur: string | null;
+  gpsLatitude: number | null;
+  gpsLongitude: number | null;
+  device: string | null;
+  mime: string | null;
+  width: number | null;
+  height: number | null;
+  bytes: number | null;
+}
+
+export interface FotoInput {
+  clientUuid?: string;
+  createdAt?: string;
+  entryUuid?: string | null;
+  kategorie?: string | null;
+  titel?: string | null;
+  standort?: string | null;
+  kultur?: string | null;
+  gpsLatitude?: number | null;
+  gpsLongitude?: number | null;
+  device?: string | null;
+  mime?: string;
+  width?: number;
+  height?: number;
+  bytes?: number;
+  data: string; // base64
+}
+
+export async function appendFoto(
+  foto: FotoInput
+): Promise<{ id: number; duplicate?: boolean }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("appendFoto", foto);
+}
+
+export async function listFotos(limit = 200): Promise<{ items: FotoMeta[] }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("listFotos", { limit });
+}
+
+export async function getFotoData(
+  id: number
+): Promise<{ data: string | null; mime: string }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("getFotoData", { id });
+}
+
+export async function exportFotos(): Promise<{ items: (FotoMeta & { data: string })[] }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("exportFotos");
+}
+
+export async function deleteFoto(id: number): Promise<{ success: boolean }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("deleteFoto", { id });
+}
+
 /**
  * Lookup helpers (EPPO / BBCH)
  */

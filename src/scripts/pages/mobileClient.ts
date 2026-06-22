@@ -35,6 +35,7 @@ import {
 } from "@scripts/core/storage/sqlite";
 import { printEntriesSafe } from "@scripts/features/shared/printing";
 import { renderCalculationSnapshot } from "@scripts/features/shared/calculationSnapshot";
+import { initFotos } from "@scripts/features/fotos";
 import { escapeHtml, formatDateFromIso } from "@scripts/core/utils";
 
 let started = false;
@@ -387,6 +388,10 @@ async function start(): Promise<void> {
   // Erfassungs-Maske mounten (subscribt u.a. auf database:connected).
   const calcContainer = document.querySelector('[data-feature="calculation"]');
   initCalculation(calcContainer, services);
+
+  // Fotos-Bereich mounten.
+  const fotosContainer = document.querySelector('[data-feature="fotos"]');
+  initFotos(fotosContainer, services);
 
   // Datenbank verbinden (löst Reload der Lookups in der Maske aus).
   await connectDatabase();

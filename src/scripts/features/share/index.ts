@@ -10,7 +10,7 @@
  * Fallback ohne Web Share API: klassischer Download.
  */
 
-import { exportSnapshot } from "@scripts/core/storage/sqlite";
+import { exportSnapshot, exportFotos } from "@scripts/core/storage/sqlite";
 import { toast } from "@scripts/core/toast";
 import { setUnsharedCount } from "./unshared";
 
@@ -56,6 +56,13 @@ export async function shareMobileData(): Promise<void> {
       device,
       exportedAt: new Date().toISOString(),
     };
+    // Fotos mitsenden (komprimiert, base64) – werden am PC per UUID gemergt.
+    try {
+      const fotos = await exportFotos();
+      snapshot.fotos = fotos.items || [];
+    } catch (err) {
+      console.warn("[Share] Fotos konnten nicht angehängt werden", err);
+    }
     json = JSON.stringify(snapshot, null, 2);
   } catch (err) {
     console.error("[Share] Export fehlgeschlagen", err);

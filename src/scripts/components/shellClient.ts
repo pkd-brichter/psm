@@ -53,6 +53,12 @@ const AREAS: AreaDef[] = [
     icon: "bi-map",
     sections: [{ section: "acker", label: "Acker-Planer", icon: "bi-map" }],
   },
+  {
+    id: "fotos",
+    label: "Fotos",
+    icon: "bi-camera",
+    sections: [{ section: "fotos", label: "Fotos", icon: "bi-camera" }],
+  },
 ];
 
 /**
@@ -67,6 +73,7 @@ const SECTION_TO_AREA: Partial<Record<Section, string>> = {
   history: "psm",
   report: "psm",
   acker: "acker",
+  fotos: "fotos",
   settings: "psm",
   gps: "psm",
   lookup: "psm",

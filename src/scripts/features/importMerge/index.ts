@@ -6,6 +6,7 @@ import {
   persistSqliteDatabaseFile,
   appendImportLog,
   listImportLog,
+  appendFoto,
   type HistoryQueryFilters,
   type ImportLogEntry,
 } from "@scripts/core/storage/sqlite";
@@ -72,6 +73,7 @@ interface ImportSession {
   stats: ImportSessionStats;
   warnings: string[];
   lastImportRefs: DocumentationFocusEntryRef[];
+  fotos: any[];
 }
 
 interface ImportRange {
@@ -300,7 +302,8 @@ function updateActionButtons(section: HTMLElement): void {
   }
   if (importBtn) {
     const hasImportable = Boolean(
-      currentSession?.importableEntries?.length && currentSession.stats
+      (currentSession?.importableEntries?.length && currentSession.stats) ||
+        currentSession?.fotos?.length
     );
     importBtn.disabled = !hasSession || !hasImportable || isProcessing;
   }
@@ -762,6 +765,7 @@ function renderPreview(
 async function readZipPayload(buffer: Uint8Array): Promise<{
   entries: any[];
   metadata: Record<string, any> | null;
+  fotos: any[];
 }> {
   const archive = unzipSync(buffer);
   const availableNames = Object.keys(archive);
@@ -787,24 +791,31 @@ async function readZipPayload(buffer: Uint8Array): Promise<{
       : Array.isArray(payload.history)
         ? payload.history
         : [];
-  return { entries, metadata };
+  const fotos = Array.isArray(payload?.fotos) ? payload.fotos : [];
+  return { entries, metadata, fotos };
 }
 
 async function readJsonPayload(buffer: Uint8Array): Promise<{
   entries: any[];
   metadata: Record<string, any> | null;
+  fotos: any[];
 }> {
   const text = strFromU8(buffer);
   const parsed = JSON.parse(text);
   if (Array.isArray(parsed)) {
-    return { entries: parsed, metadata: null };
+    return { entries: parsed, metadata: null, fotos: [] };
   }
+  const fotos = Array.isArray(parsed.fotos) ? parsed.fotos : [];
   if (Array.isArray(parsed.entries)) {
-    return { entries: parsed.entries, metadata: parsed.metadata || null };
+    return { entries: parsed.entries, metadata: parsed.metadata || null, fotos };
   }
   // Snapshot-Format (z. B. Mobil-Export "Daten teilen"): Einträge liegen unter "history".
   if (Array.isArray(parsed.history)) {
-    return { entries: parsed.history, metadata: parsed.metadata || null };
+    return { entries: parsed.history, metadata: parsed.metadata || null, fotos };
+  }
+  // Nur Fotos (keine Einträge) ist auch gültig.
+  if (fotos.length) {
+    return { entries: [], metadata: parsed.metadata || null, fotos };
   }
   throw new Error("JSON enthält keine Eintragsliste.");
 }
@@ -815,16 +826,14 @@ async function buildSession(
 ): Promise<ImportSession> {
   const buffer = new Uint8Array(await file.arrayBuffer());
   const isZip = /\.zip$/i.test(file.name) || file.type === "application/zip";
-  const { entries: rawEntries, metadata } = isZip
+  const { entries: rawEntries, metadata, fotos } = isZip
     ? await readZipPayload(buffer)
     : await readJsonPayload(buffer);
-  if (!Array.isArray(rawEntries) || !rawEntries.length) {
-    throw new Error("Keine Einträge in der Datei gefunden.");
-  }
-  const normalized = rawEntries
+  const fotosList = Array.isArray(fotos) ? fotos : [];
+  const normalized = (Array.isArray(rawEntries) ? rawEntries : [])
     .map((entry) => normalizeEntry(entry))
     .filter((entry): entry is HistoryEntry => Boolean(entry));
-  if (!normalized.length) {
+  if (!normalized.length && !fotosList.length) {
     throw new Error("Die Datei enthielt keine verwertbaren Einträge.");
   }
   const range = resolveImportRange(normalized, metadata);
@@ -865,6 +874,7 @@ async function buildSession(
     stats,
     warnings,
     lastImportRefs: [],
+    fotos: fotosList,
   };
 }
 
@@ -1007,7 +1017,8 @@ async function runImport(
     window.alert("Bitte zuerst eine Importdatei laden.");
     return;
   }
-  if (!currentSession.importableEntries.length) {
+  const sessionFotos: any[] = currentSession.fotos || [];
+  if (!currentSession.importableEntries.length && !sessionFotos.length) {
     window.alert(
       "Alle Einträge wurden bereits importiert oder als Duplikat erkannt."
     );
@@ -1041,7 +1052,7 @@ async function runImport(
     }
     filteredEntries.push(entry);
   });
-  if (!filteredEntries.length) {
+  if (!filteredEntries.length && !sessionFotos.length) {
     setFeedback(section, "Keine neuen Einträge gefunden.");
     setHint(
       section,
@@ -1056,6 +1067,8 @@ async function runImport(
   const driverKey = getActiveDriverKey();
   const importedRefs: DocumentationFocusEntryRef[] = [];
   const failed: string[] = [];
+  let fotosAdded = 0;
+  let fotosDup = 0;
   const entriesToImport = filteredEntries.map((entry) =>
     ensureSavedAt({ ...entry })
   );
@@ -1082,6 +1095,19 @@ async function runImport(
       }
       // Nur die tatsächlich neu eingefügten Einträge in den State übernehmen.
       appendEntriesToStateHistory(services, insertedEntries);
+      // Fotos mergen (UUID-Dedup im Worker).
+      for (const foto of sessionFotos) {
+        try {
+          const r = await appendFoto(foto);
+          if (r?.duplicate) fotosDup += 1;
+          else fotosAdded += 1;
+        } catch (err) {
+          console.error("appendFoto failed", err);
+        }
+      }
+      if (fotosAdded) {
+        window.dispatchEvent(new CustomEvent("fotos:changed"));
+      }
       try {
         await persistSqliteDatabaseFile();
       } catch (error) {
@@ -1099,16 +1125,19 @@ async function runImport(
     }
 
     const successCount = importedRefs.length;
-    if (successCount) {
-      if (driverKey === "sqlite") {
+    if (successCount || fotosAdded) {
+      if (driverKey === "sqlite" && successCount) {
         services.events?.emit?.("history:data-changed", {
           type: "created-bulk",
           count: successCount,
         });
       }
+      const parts: string[] = [];
+      if (successCount) parts.push(`${successCount} Einträge`);
+      if (fotosAdded) parts.push(`${fotosAdded} Foto(s)`);
       setFeedback(
         section,
-        `${successCount} Einträge importiert. ${failed.length ? `${failed.length} Einträge konnten nicht übernommen werden.` : ""}`.trim()
+        `${parts.join(" und ")} importiert.${failed.length ? ` ${failed.length} Einträge konnten nicht übernommen werden.` : ""}`.trim()
       );
       currentSession.lastImportRefs = importedRefs;
       // KEIN automatischer Datums-Fokus mehr: der setzte einen Filter auf den
@@ -1123,7 +1152,7 @@ async function runImport(
       };
       renderSession(section);
     } else {
-      setFeedback(section, "Keine Einträge wurden importiert.");
+      setFeedback(section, "Keine neuen Daten importiert.");
     }
     const hintMessages: string[] = [];
     let hintVariant: "success" | "warning" = "success";
@@ -1139,14 +1168,26 @@ async function runImport(
       );
       hintVariant = "warning";
     }
+    if (fotosDup) {
+      hintMessages.push(
+        `${fotosDup} Foto(s) waren bereits vorhanden (übersprungen).`
+      );
+    }
     if (!hintMessages.length) {
       hintMessages.push("Import abgeschlossen.");
     }
     setHint(section, hintMessages.join(" "), hintVariant);
 
     // Import-Historie protokollieren (Tabelle existiert nur im SQLite-Modus).
-    if (driverKey === "sqlite" && (successCount || duplicatesDuringImport)) {
+    if (
+      driverKey === "sqlite" &&
+      (successCount || duplicatesDuringImport || fotosAdded || fotosDup)
+    ) {
       try {
+        const noteParts: string[] = [];
+        if (failed.length) noteParts.push(`${failed.length} fehlgeschlagen`);
+        if (fotosAdded) noteParts.push(`${fotosAdded} Fotos`);
+        if (fotosDup) noteParts.push(`${fotosDup} Fotos doppelt`);
         await appendImportLog({
           source: currentSession.filename || null,
           device:
@@ -1156,7 +1197,7 @@ async function runImport(
           skipped: duplicatesDuringImport,
           rangeStart: currentSession.stats.startDateRaw,
           rangeEnd: currentSession.stats.endDateRaw,
-          note: failed.length ? `${failed.length} fehlgeschlagen` : null,
+          note: noteParts.length ? noteParts.join(", ") : null,
         });
         await persistSqliteDatabaseFile().catch(() => undefined);
         await refreshImportLog(section);

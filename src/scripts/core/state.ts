@@ -117,7 +117,8 @@ export interface AppState {
       | "gps"
       | "import"
       | "lager"
-      | "acker";
+      | "acker"
+      | "fotos";
     storageDriver: "memory" | "sqlite" | "filesystem" | "localstorage";
   };
   company: {

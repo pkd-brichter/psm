@@ -1540,3 +1540,69 @@ html.qs-mode .card-dark {
   padding: 0.1rem 0.35rem;
   font-size: var(--font-size-xs);
 }
+
+/* ===== Fotos (Galerie + Vollansicht) ===== */
+.fotos-wrap { padding: 4px 0; }
+.fotos-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.fotos-add { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; }
+.fotos-hint { font-size: 0.85rem; color: var(--text-muted); }
+.fotos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.fotos-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-1);
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.fotos-card:hover { border-color: var(--border-2); }
+.fotos-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--surface-2);
+  display: block;
+}
+.fotos-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 6px 8px;
+}
+.fotos-empty { color: var(--text-muted); font-size: 0.9rem; padding: 8px 0; }
+
+body.fotos-modal-open { overflow: hidden; }
+.fotos-modal { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; }
+.fotos-modal-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.6); }
+.fotos-modal-sheet {
+  position: relative;
+  z-index: 1;
+  width: min(92vw, 760px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.fotos-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--color-border); font-weight: 700; color: var(--text);
+}
+.fotos-modal-x { border: none; background: var(--surface-2); color: var(--text); width: 34px; height: 34px; border-radius: 999px; cursor: pointer; }
+.fotos-modal-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; background: var(--surface-2); }
+.fotos-modal-body img { max-width: 100%; max-height: 80vh; display: block; }
+.fotos-modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 14px; border-top: 1px solid var(--color-border); }
