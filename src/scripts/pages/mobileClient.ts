@@ -408,6 +408,17 @@ async function start(): Promise<void> {
     void loadRecent();
   });
 
+  // Fotos zählen ebenfalls als "noch nicht geteilt" → Teilen-Button aktiv.
+  // Nur neu hinzugefügte Fotos (detail.added > 0) erhöhen den Zähler; das
+  // Bearbeiten/Löschen eines Fotos nicht.
+  window.addEventListener("fotos:changed", (event) => {
+    const added = (event as CustomEvent<{ added?: number }>)?.detail?.added || 0;
+    if (added > 0) {
+      setUnsharedCount(getUnsharedCount() + added);
+      renderShareStatus();
+    }
+  });
+
   document.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-action="m-share"]')) {

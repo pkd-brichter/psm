@@ -256,7 +256,8 @@ export function initFotos(
     }
     setStatus("");
     if (ok) toast.success(`${ok} Foto(s) gespeichert.`);
-    window.dispatchEvent(new CustomEvent("fotos:changed"));
+    // added > 0 signalisiert dem Mobile-Client „noch nicht geteilt" (Teilen-Button).
+    window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: ok } }));
     await refresh();
   }
 
