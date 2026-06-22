@@ -1,4 +1,5 @@
 import type { ArchiveLogEntry, GpsPoint } from "../state";
+import { saveDbBytes, loadDbBytes } from "./indexedDbStore";
 
 /**
  * SQLite Storage Driver
@@ -25,6 +26,21 @@ type PendingMessage = {
 let pendingMessages = new Map<number, PendingMessage>();
 let fileHandle: any = null;
 let pendingFilePersist: Promise<void> | null = null;
+
+/**
+ * Mobile-Modus: ohne File System Access API wird der binäre DB-Export in
+ * IndexedDB persistiert (siehe indexedDbStore.ts). Standardmäßig aus – am
+ * Desktop bleibt damit das bisherige Datei-Verhalten exakt erhalten.
+ */
+let indexedDbPersist = false;
+
+export function enableIndexedDbPersistence(enabled = true): void {
+  indexedDbPersist = enabled;
+}
+
+export function isIndexedDbPersistenceEnabled(): boolean {
+  return indexedDbPersist;
+}
 
 /**
  * Check if SQLite-WASM is supported
@@ -161,8 +177,17 @@ export async function create(
   // Import initial data into SQLite
   await callWorker("importSnapshot", initialData);
 
-  // Optionally save to file (if File System Access API is available)
-  if (typeof (window as any).showSaveFilePicker === "function") {
+  // Mobile-Modus hat Vorrang: initiale DB direkt in IndexedDB sichern und den
+  // Datei-Dialog NIE versuchen (auch nicht, wenn der Browser ihn theoretisch
+  // anbietet). Sonst Desktop-Verhalten: über die File System Access API speichern.
+  if (indexedDbPersist) {
+    try {
+      const exported = await callWorker("exportDB");
+      await saveDbBytes(normalizeExportedData(exported?.data));
+    } catch (err) {
+      console.warn("Could not persist SQLite to IndexedDB:", err);
+    }
+  } else if (typeof (window as any).showSaveFilePicker === "function") {
     try {
       fileHandle = await (window as any).showSaveFilePicker({
         suggestedName,
@@ -187,6 +212,28 @@ export async function create(
   }
 
   return { data: initialData, context: { fileHandle } };
+}
+
+/**
+ * Öffnet die zuletzt in IndexedDB persistierte Datenbank (Mobile-Modus).
+ * Liefert null, wenn noch keine lokale DB vorhanden ist.
+ */
+export async function openFromIndexedDb(): Promise<{
+  data: any;
+  context: any;
+} | null> {
+  if (!isSupported()) {
+    throw new Error("SQLite-WASM is not supported in this browser");
+  }
+  await initWorker();
+  const bytes = await loadDbBytes();
+  if (!bytes || bytes.byteLength === 0) {
+    return null;
+  }
+  await callWorker("importDB", bytes.buffer);
+  const data = await callWorker("exportSnapshot");
+  fileHandle = null;
+  return { data, context: { fileHandle: null } };
 }
 
 /**
@@ -254,7 +301,12 @@ export async function open(): Promise<{ data: any; context: any }> {
 let needsRepersist = false;
 
 async function persistFileHandleIfNeeded(): Promise<void> {
-  if (!worker || !fileHandle) {
+  if (!worker) {
+    return;
+  }
+  // Desktop: in die Datei schreiben. Mobile (kein Handle): in IndexedDB sichern.
+  // Ohne beides ist Persistenz ein No-Op (z. B. flüchtige In-Memory-Sitzung).
+  if (!fileHandle && !indexedDbPersist) {
     return;
   }
 
@@ -275,9 +327,13 @@ async function persistFileHandleIfNeeded(): Promise<void> {
     try {
       const exported = await callWorker("exportDB");
       const bytes = normalizeExportedData(exported?.data);
-      const writable = await fileHandle.createWritable();
-      await writable.write(bytes);
-      await writable.close();
+      if (fileHandle) {
+        const writable = await fileHandle.createWritable();
+        await writable.write(bytes);
+        await writable.close();
+      } else if (indexedDbPersist) {
+        await saveDbBytes(bytes);
+      }
     } finally {
       pendingFilePersist = null;
     }

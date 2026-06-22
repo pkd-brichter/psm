@@ -35,6 +35,9 @@
     <button class="nav-btn" data-section="settings">
       <i class="bi bi-gear"></i><span>Einstellungen</span>
     </button>
+    <button class="nav-btn nav-btn-share" data-action="share-data">
+      <i class="bi bi-share"></i><span>Daten teilen</span>
+    </button>
   </nav>
 
   <div class="sidebar-foot">
@@ -83,5 +86,19 @@
     .no-print {
       display: none !important;
     }
+  }
+
+  /* Mobile-Modus: schlanker Erfassungs-Client. Schwere/zentrale Bereiche aus,
+     dafür "Daten teilen" sichtbar. Desktop bleibt unverändert. */
+  .nav-btn-share {
+    display: none;
+  }
+  :global(body.mobile-mode) .nav-btn-share {
+    display: flex;
+  }
+  :global(body.mobile-mode) .nav-btn[data-section="lager"],
+  :global(body.mobile-mode) .nav-btn[data-section="acker"],
+  :global(body.mobile-mode) .nav-btn[data-section="settings"] {
+    display: none;
   }
 </style>

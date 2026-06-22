@@ -47,6 +47,20 @@ function initShell(): void {
     });
   });
 
+  // "Daten teilen" (nur Mobile-Modus sichtbar) – Share-Sheet/Download.
+  const shareButton = document.querySelector<HTMLButtonElement>(
+    '.nav-btn[data-action="share-data"]',
+  );
+  shareButton?.addEventListener("click", () => {
+    shareButton.disabled = true;
+    import("@scripts/features/share")
+      .then(({ shareMobileData }) => shareMobileData())
+      .catch((error) => console.error("Teilen fehlgeschlagen", error))
+      .finally(() => {
+        shareButton.disabled = false;
+      });
+  });
+
   subscribeState((state) => {
     const brandTitle = document.getElementById("brand-title");
     const brandTagline = document.getElementById("brand-tagline");
