@@ -1062,18 +1062,26 @@ async function runImport(
 
   try {
     if (driverKey === "sqlite") {
+      const insertedEntries: HistoryEntry[] = [];
       for (const entry of entriesToImport) {
         try {
           const result = await appendHistoryEntry(entry);
+          // Worker erkennt gleiche clientUuid -> duplicate: true (nicht eingefügt)
+          if (result?.duplicate) {
+            duplicatesDuringImport += 1;
+            continue;
+          }
           if (result?.id != null) {
             importedRefs.push({ source: "sqlite", ref: result.id });
+            insertedEntries.push(entry);
           }
         } catch (error) {
           console.error("appendHistoryEntry failed", error);
           failed.push(entry.savedAt || "Unbekannter Eintrag");
         }
       }
-      appendEntriesToStateHistory(services, entriesToImport);
+      // Nur die tatsächlich neu eingefügten Einträge in den State übernehmen.
+      appendEntriesToStateHistory(services, insertedEntries);
       try {
         await persistSqliteDatabaseFile();
       } catch (error) {
@@ -1103,7 +1111,11 @@ async function runImport(
         `${successCount} Einträge importiert. ${failed.length ? `${failed.length} Einträge konnten nicht übernommen werden.` : ""}`.trim()
       );
       currentSession.lastImportRefs = importedRefs;
-      emitDocumentationFocus(services, currentSession, importedRefs);
+      // KEIN automatischer Datums-Fokus mehr: der setzte einen Filter auf den
+      // (ggf. zeitzonen-schiefen) Import-Zeitraum -> Einträge fielen aus der
+      // Liste ("muss neu laden"). Stattdessen wird über history:data-changed die
+      // VOLLE Liste aufgefrischt. Der manuelle "Einträge anzeigen"-Button nutzt
+      // lastImportRefs weiterhin.
       currentSession.importableEntries = [];
       currentSession.stats = {
         ...currentSession.stats,

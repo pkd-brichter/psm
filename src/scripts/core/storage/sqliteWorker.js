@@ -4288,6 +4288,28 @@ async function getHistoryEntry(id) {
 async function appendHistoryEntry(entry) {
   if (!db) throw new Error("Database not initialized");
 
+  // Robuster Duplikatschutz: gleiche clientUuid bereits vorhanden -> nicht
+  // erneut einfügen (unabhängig von Datum/Zeitzone). Greift für normale
+  // Erfassung (immer neue UUID) nicht, nur beim (Re-)Import gleicher Einträge.
+  const incomingHeader = entry && entry.header ? entry.header : entry || {};
+  const clientUuid =
+    incomingHeader && incomingHeader.clientUuid
+      ? String(incomingHeader.clientUuid)
+      : null;
+  if (clientUuid) {
+    try {
+      const existingId = db.selectValue(
+        "SELECT id FROM history WHERE json_extract(header_json, '$.clientUuid') = ? LIMIT 1",
+        [clientUuid]
+      );
+      if (existingId != null) {
+        return { id: existingId, duplicate: true };
+      }
+    } catch (e) {
+      /* json_extract nicht verfügbar -> Fallback ohne Worker-Dedup */
+    }
+  }
+
   db.exec("BEGIN TRANSACTION");
 
   try {

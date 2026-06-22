@@ -785,7 +785,9 @@ export async function deleteArchiveLog(
   return await callWorker("deleteArchiveLog", { id });
 }
 
-export async function appendHistoryEntry(entry: any): Promise<{ id: number }> {
+export async function appendHistoryEntry(
+  entry: any
+): Promise<{ id: number; duplicate?: boolean }> {
   if (!worker) {
     throw new Error("Database not initialized");
   }
