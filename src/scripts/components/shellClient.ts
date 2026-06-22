@@ -42,6 +42,9 @@ const AREAS: AreaDef[] = [
       { section: "calc", label: "Neu erfassen", icon: "bi-pencil-square" },
       { section: "documentation", label: "Übersicht", icon: "bi-list-ul" },
       { section: "lager", label: "Lager", icon: "bi-box-seam" },
+      // Einstellungen sind PSM-spezifisch (Mittel/EPPO/BBCH/GPS), kein
+      // systemweiter Bereich -> gehören in den PSM-Header, nicht in die Sidebar.
+      { section: "settings", label: "Einstellungen", icon: "bi-gear" },
     ],
   },
   {
@@ -49,12 +52,6 @@ const AREAS: AreaDef[] = [
     label: "Acker-Planer",
     icon: "bi-map",
     sections: [{ section: "acker", label: "Acker-Planer", icon: "bi-map" }],
-  },
-  {
-    id: "settings",
-    label: "Einstellungen",
-    icon: "bi-gear",
-    sections: [{ section: "settings", label: "Einstellungen", icon: "bi-gear" }],
   },
 ];
 
@@ -70,10 +67,10 @@ const SECTION_TO_AREA: Partial<Record<Section, string>> = {
   history: "psm",
   report: "psm",
   acker: "acker",
-  settings: "settings",
-  gps: "settings",
-  lookup: "settings",
-  import: "settings",
+  settings: "psm",
+  gps: "psm",
+  lookup: "psm",
+  import: "psm",
 };
 
 function areaById(id: string): AreaDef | undefined {

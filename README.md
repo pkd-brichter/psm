@@ -1,162 +1,144 @@
-# Digitale PSM
+# PSM – Pestalozzi-Garten-Plattform
 
-**Digitale Pflanzenschutz-Dokumentation** – Eine moderne Web-Anwendung zur Erfassung, Berechnung und Dokumentation von Pflanzenschutzmaßnahmen im biologischen und konventionellen Landbau.
-
-🌐 **Live-Demo:** [www.digitale-psm.de](https://www.digitale-psm.de)
-
----
-
-## 🌱 Pestalozzi-Garten-Plattform — Vision & Architektur (Fork-Kontext)
-
-Dieser Fork (`pkd-brichter/psm`, Deploy: **https://pkd-brichter.github.io/psm/**) ist die
-**maßgeschneiderte Plattform der Pestalozzi Gärtnerei Wahlwies (Demeter-Bio-Betrieb)** —
-nicht mehr das generische digitale-psm.de. Es werden viele Apps/Funktionen folgen.
-
-**Architektur-Prinzipien (immer einhalten):**
-- **Eine gemeinsame SQLite-DB für ALLE Apps** (Worker `src/scripts/core/storage/sqliteWorker.js`
-  = Source of Truth; Migrationen über `PRAGMA user_version`). Egal welche App geöffnet wird –
-  dieselbe DB. Ziel: Cross-App-Auswertungen.
-- **Modular & stabil:** jede App = eigenes Feature-Modul (`src/scripts/features/<name>/`),
-  als View in EINER SPA (linke **Sidebar-Navigation**, Icons + Namen, nicht ein-/ausklappbar),
-  Worker-CRUD + Bridge (`sqlite.ts`) + Migration.
-- **Maximal wenig Tipparbeit:** Stammdaten vorbefüllen/auswählbar machen; Unnötiges entfernen.
-- **Immer Statistik & Übersicht:** jede App zeigt auf einen Blick *wann was gemacht wurde* und
-  *was zu tun ist* (Dashboard, Warnungen, Verbrauch/Bestand). Profi-tauglich.
-- **Browser-only, GH Pages, kein Backend, leichtgewichtig** (Astro + Vanilla-TS; schwere Libs
-  wie Leaflet/Turf nur **lazy**). Deploy ohne Workflow: `npm run build` + `npx gh-pages -d dist -t`.
-
-**Apps:** Dashboard (Start), PSM (Erfassung/Doku), **PSM-Lager** (Bestand = Zugänge − Verbrauch,
-Verbrauch automatisch aus den Anwendungen), Acker-Planer (Freiland-Flächen). Geplant: weitere
-Lager (z. B. Jungpflanzen) + Cross-App-Features. Stand/Details: Memory `psm-platform.md`.
+> **Was ist das?** Eine **Spezialisierung / ein Fork von [digitale-psm.de](https://www.digitale-psm.de)** –
+> maßgeschneidert für die **Pestalozzi Gärtnerei Wahlwies** (Demeter-Bio-Betrieb).
+> digitale-psm.de ist das generische Pflanzenschutz-Dokumentationstool; **dieses Repo
+> (`pkd-brichter/psm`)** baut darauf auf und entwickelt es zu einer betriebseigenen
+> **Plattform mit mehreren Apps** weiter (nicht nur Pflanzenschutz).
+>
+> 🌐 **Live:** https://pkd-brichter.github.io/psm/  ·  📱 **Mobil:** https://pkd-brichter.github.io/psm/m/
 
 ---
 
-## Features
+## 🧭 Für neue Agenten / Entwickler – schnelle Orientierung
 
-### 📱 Progressive Web App (PWA)
+- **Stack:** Astro 5 + **Vanilla TypeScript** (kein UI-Framework) + Bootstrap 5 (CDN).
+  Daten in **SQLite-WASM in einem Web Worker**. **Komplett statisch**, GitHub Pages,
+  **kein Backend**. Base-Pfad: `/psm/`.
+- **Zwei Auslieferungen, ein Repo:**
+  - **Desktop** (`/`): volle App. DB = **geteilte `.sqlite`-Datei auf dem Firmen-/AD-Server­verzeichnis**
+    (File System Access API). **Single-Writer** (immer nur einer schreibt gleichzeitig) – das ist die *Quelle der Wahrheit*.
+  - **Mobil** (`/m/`): eigene **schlanke Erfassungs-App**. DB = **lokal in IndexedDB** (vorbefüllt),
+    erfassen + per **Share-Sheet (JSON)** weitergeben → am PC via **Import/Merge** in die zentrale DB.
+    Handys werden von `/` automatisch auf `/m/` geleitet (`?desktop=1` hebelt das aus).
+- **Warum getrennt:** GitHub Pages kann nicht serverseitig nach Gerät ausliefern → stattdessen
+  **2 Seiten in 1 Repo** mit **geteiltem Kern** (Worker/Storage/Seed/Share). Kein Zwilling-Repo.
+- **`activeSection` ist die zentrale Wahrheit** der Navigation. Sidebar = Top-Level-**Bereiche** (nur Icons),
+  Header-Reiter = Unter-Ansichten des Bereichs (siehe unten).
+- **Nicht (mehr) vorhanden:** die **BVL-Zulassungsdatenbank** wurde komplett entfernt (Pestalozzi nutzt
+  eigene Kulturen/Mittel); ein „Performance Monitor"-Overlay wurde entfernt. EPPO/BBCH-Codes bleiben.
 
-- **Als App installierbar** auf Desktop und Mobilgeräten
-- **Offline-fähig** dank Service Worker Caching
-- **Auto-Start** mit zuletzt verwendeter Datenbank
-- Direktes Öffnen von .sqlite Dateien aus dem Explorer
+---
 
-### 🧮 Berechnung
+## 🏗️ Architektur-Prinzipien (immer einhalten)
 
-- Intelligente Pflanzenschutzmittel-Berechnung basierend auf Fläche/Menge
-- EPPO-Code und BBCH-Stadium Unterstützung mit Schnellauswahl
-- Automatische Umrechnung verschiedener Aufwandmengen
-- Mittel-Profile für häufig verwendete Kombinationen
+- **Eine gemeinsame SQLite-DB für ALLE Apps.** Worker `src/scripts/core/storage/sqliteWorker.js`
+  ist die *Source of Truth*. Schema-Änderungen über **Migrationen** (`PRAGMA user_version`, aktuell bis v18).
+  Egal welche App geöffnet wird – dieselbe DB. Ziel: Cross-App-Auswertungen.
+- **Modular & stabil:** jede App = eigenes Feature-Modul unter `src/scripts/features/<name>/`,
+  als View in EINER SPA. Worker-CRUD + Bridge (`storage/sqlite.ts`) + Migration.
+- **Maximal wenig Tipparbeit:** Stammdaten vorbefüllen/auswählbar machen (Seed), Unnötiges weglassen.
+- **Immer Übersicht & Statistik:** jede App zeigt auf einen Blick *wann was gemacht wurde* und *was zu tun ist*.
+- **Browser-only, leichtgewichtig:** schwere Libs (Leaflet/Turf) nur **lazy**.
 
-### 📋 Dokumentation
+## 🗂️ Apps & Navigation
 
-- Vollständige Aufzeichnung aller Anwendungen
-- Kalenderansicht mit Filter-Funktionen
-- Export als PDF oder CSV
-- QS-konforme Dokumentation
+**Desktop-Sidebar = Bereiche (nur Icons, Portainer-Stil).** Die Unter-Ansichten des aktiven Bereichs
+erscheinen oben im **Header** als Reiter. Definition: `src/scripts/components/shellClient.ts` (`AREAS`).
 
-### 🗄️ BVL-Datenbank
+| Bereich (Sidebar) | Header-Reiter (Sections) |
+|---|---|
+| **Start** | Dashboard |
+| **PSM** | Neu erfassen (`calc`) · Übersicht (`documentation`) · Lager (`lager`) · Einstellungen (`settings`) |
+| **Acker-Planer** | Acker-Planer (`acker`, Leaflet – lazy) |
 
-- Direkter Zugriff auf die offizielle BVL-Zulassungsdatenbank
-- Automatische Updates der Zulassungsdaten
-- Suche nach Kulturen, Schaderreger und Wirkstoffen
+> **Einstellungen sind PSM-spezifisch** (Mittel/EPPO/BBCH/GPS) und liegen daher im PSM-Header,
+> nicht in der Sidebar. Geplant: weitere Apps/Lager + Cross-App-Features.
 
-### 📍 GPS-Standorte
+## 🗄️ Daten- & Speicher-Modell
 
-- Speichern häufig genutzter Standorte
-- Koordinaten-Erfassung via Geolocation
+- **Worker** (`storage/sqliteWorker.js`): SQLite-WASM (`@sqlite.org/sqlite-wasm` via CDN), In-Memory-DB,
+  Tabellen + Migrationen, Snapshot-Import/Export, ganze-Datei-Export (`exportDB`).
+- **Bridge** (`storage/sqlite.ts`): Main-Thread ↔ Worker (postMessage), plus Persistenz:
+  - Desktop: schreibt die **ganze Datei** über das `FileSystemFileHandle` zurück.
+  - Mobil: `enableIndexedDbPersistence()` → exportierte Bytes in **IndexedDB** (`storage/indexedDbStore.ts`).
+- **Treiber-Auswahl:** `storage/index.ts` (`sqlite` bevorzugt).
+- **Seed:** leere DB wird mit Pestalozzi-Stammdaten gefüllt (`public/data/pestalozzi-seed.json`:
+  GPS-Standorte + Kultur→Mittel) – siehe `core/database.ts › ensureInitialSeed()`.
+- **Plattform-Erkennung & Mobile-Auto-Start:** `core/platform.ts` (`isMobileClient`, `?mobile`/`?desktop`),
+  `pages/mobileClient.ts`.
 
-### ⚙️ Einstellungen
+## 🔄 Mobil → Desktop zusammenführen (Merge)
 
-- Eigene Mittel und Profile verwalten
-- EPPO/BBCH-Codes speichern
-- Individuelle Anpassungen
+- Jede Erfassung bekommt eine **stabile `clientUuid`** → **Duplikatschutz per UUID** beim Import
+  (dieselbe Datei doppelt = 0 neu). Logik: `features/importMerge/`.
+- **Import-Historie** (Tabelle `import_log`): *wann / von welchem Gerät / wie viele neu·übersprungen /
+  Zeitraum* – sichtbar unter **PSM → Übersicht → Import**.
+- Import akzeptiert **Snapshot (`{history:[…]}`)**, `{entries:[…]}` und ZIP.
+- Mobiler **Teilen-Status**: „X bereit zum Teilen" / „Alles geteilt ✓" (Teilen nur aktiv, wenn etwas offen ist).
 
-## Technologie
+## 🚀 Entwicklung
 
-- **Frontend:** Astro 4.16, TypeScript, Bootstrap 5
-- **Datenbank:** SQLite WASM (läuft komplett im Browser)
-- **PWA:** Service Worker, Web App Manifest, File Handling API
-- **Offline-First:** Funktioniert ohne Internetverbindung
-- **Datenschutz:** Alle Daten bleiben lokal auf Ihrem Gerät
-
-## Installation (Entwicklung)
-
-### Voraussetzungen
-
-- **Node.js** (v18 oder höher)
-- **npm** (v9 oder höher)
-- **Git LFS** (für große Binärdateien)
-
-### Git LFS einrichten
-
-Dieses Projekt verwendet [Git Large File Storage (LFS)](https://git-lfs.github.com/) für große Binärdateien wie SQLite-Datenbanken und Bilder. Git LFS muss **vor dem Klonen** installiert werden.
-
-```bash
-# Git LFS installieren (macOS)
-brew install git-lfs
-
-# Git LFS installieren (Ubuntu/Debian)
-sudo apt-get install git-lfs
-
-# Git LFS installieren (Windows - mit Git für Windows bereits enthalten)
-# Oder: winget install GitHub.GitLFS
-
-# Git LFS global aktivieren (einmalig pro System)
-git lfs install
-```
-
-### Repository klonen
+**Voraussetzungen:** Node.js ≥ 18, npm ≥ 9, **Git LFS** (große Binärdateien wie `.sqlite`, Bilder, `.wasm`).
 
 ```bash
-# Repository klonen (Git LFS lädt große Dateien automatisch)
-git clone https://github.com/Abbas-Hoseiny/psm.git
+git lfs install                                   # einmalig pro System
+git clone https://github.com/pkd-brichter/psm.git
 cd psm
-
-# Falls Git LFS Dateien nicht geladen wurden:
-git lfs pull
-
-# Abhängigkeiten installieren
+git lfs pull                                       # falls LFS-Dateien fehlen
 npm install
 
-# Entwicklungsserver starten
-npm run dev
-
-# Produktion bauen
-npm run build
+npm run dev        # Dev-Server (http://localhost:4321/psm/)
+npm run build      # astro check + Produktions-Build nach dist/
+npm run preview    # gebautes dist/ lokal servieren
 ```
 
-### Von Git LFS verwaltete Dateien
+> Hinweis: Die EPPO/BBCH-Lookup-`.sqlite` unter `public/data/` werden per **Git LFS** verwaltet –
+> in einem Klon ohne `git lfs pull` sind es nur Pointer (führt lokal zu `SQLITE_NOTADB`, in Produktion korrekt).
 
-Folgende Dateitypen werden von Git LFS verwaltet:
+## 📦 Deploy (GitHub Pages, manuell)
 
-| Dateityp | Beschreibung |
-|----------|--------------|
-| `*.sqlite`, `*.sqlite.br`, `*.sqlite.zip` | SQLite-Datenbanken (BVL, EPPO, BBCH) |
-| `*.jpg`, `*.jpeg`, `*.png`, `*.gif`, `*.webp` | Bilddateien |
-| `*.wasm` | WebAssembly-Module |
-| `*.ttf`, `*.woff`, `*.woff2` | Schriftarten |
-| `*.zip`, `*.gz`, `*.br` | Komprimierte Dateien |
-| `*.pdf` | PDF-Dokumente |
+```bash
+npm run build
+npx gh-pages -d dist -t        # -t = Dotfiles (.nojekyll) mit deployen
+```
 
-**Wichtig:** Wenn Sie große Dateien hinzufügen, werden diese automatisch von Git LFS verwaltet.
+Deploy-Ziel: Branch `gh-pages` → https://pkd-brichter.github.io/psm/.
+`astro.config.mjs` setzt `site` + `base: "/psm/"` und stempelt pro Build eine `CACHE_VERSION` in `sw.js`
+(damit installierte PWAs den neuen Code bekommen).
 
-## PWA Installation
+## 📁 Projektstruktur (Auszug)
 
-Die App kann als Progressive Web App installiert werden:
+```
+src/
+  pages/
+    index.astro            # Desktop-App (lädt main/shellClient/indexClient)
+    m/index.astro          # Mobile-App (lädt mobileClient)
+  components/Shell.astro    # Icon-Sidebar (Bereiche)
+  layouts/BaseLayout.astro
+  scripts/
+    main.ts                # Desktop-Bootstrap-Einstieg
+    core/
+      bootstrap.ts         # Desktop-Init + Mobile-Redirect (/ → /m/)
+      platform.ts          # Mobile-Erkennung (?mobile/?desktop)
+      database.ts          # State <-> DB, Seed, GPS
+      storage/
+        sqliteWorker.js    # SQLite-WASM Worker (Source of Truth, Migrationen)
+        sqlite.ts          # Bridge Main<->Worker + Persistenz
+        indexedDbStore.ts  # Mobile-Persistenz (IndexedDB)
+        index.ts           # Treiber-Auswahl
+      state.ts             # zentraler App-State (activeSection ...)
+    components/shellClient.ts  # Sidebar/Header-Navigation (AREAS)
+    pages/
+      indexClient.ts       # Desktop: mountet Features, Section-Sichtbarkeit
+      mobileClient.ts      # Mobile: DB verbinden + Erfassung + Teilen-Status
+    features/
+      dashboard/ calculation/ documentation/ lager/ acker/
+      settings/ codesManager/ importMerge/ gps/ share/ ...
+public/data/
+  pestalozzi-seed.json     # Stammdaten-Seed (Standorte + Kultur->Mittel)
+```
 
-1. **Chrome/Edge:** Auf das Installations-Symbol in der Adressleiste klicken
-2. **Mobile:** "Zum Startbildschirm hinzufügen" im Browser-Menü
+## 📄 Lizenz & Kontakt
 
-Nach der Installation:
-- Startet die App ohne Browser-UI
-- Merkt sich die zuletzt verwendete Datenbank
-- Öffnet .sqlite Dateien direkt per Doppelklick
-
-## Lizenz
-
-MIT-Lizenz – siehe [LICENSE](LICENSE)
-
-## Kontakt
-
-- Website: [www.digitale-psm.de](https://www.digitale-psm.de)
-- Entwickler: Abbas Hoseiny
+MIT – siehe [LICENSE](LICENSE). Basis: [digitale-psm.de](https://www.digitale-psm.de) · Entwickler: Abbas Hoseiny.
