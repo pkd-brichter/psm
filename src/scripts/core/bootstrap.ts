@@ -15,10 +15,6 @@ import { isMobileClient } from "./platform";
 import { getState, patchState, subscribeState, updateSlice } from "./state";
 import { emit, subscribe as subscribeEvent } from "./eventBus";
 import { registerHistorySeeder } from "../dev/historySeeder";
-import {
-  shouldEnableDebugOverlay,
-  markManualDebugOverlayAccess,
-} from "../dev/debugOverlayGate";
 import { initQsMode } from "./qsMode";
 import { initToastContainer } from "./toast";
 import { initPwa, storeFileHandle, saveDbState } from "./pwa";
@@ -107,52 +103,6 @@ export async function bootstrap() {
 
   // Feature initialization - to be implemented in Astro components
   registerHistorySeeder(services);
-
-  const overlayToggle = document.querySelector<HTMLButtonElement>(
-    "[data-action='debug-overlay-toggle']",
-  );
-
-  const markToggleActive = () => {
-    if (!overlayToggle) {
-      return;
-    }
-    overlayToggle.dataset.active = "true";
-    overlayToggle.setAttribute("aria-pressed", "true");
-  };
-
-  let debugOverlayInit: Promise<void> | null = null;
-  const loadDebugOverlay = (reason?: "manual") => {
-    if (reason === "manual") {
-      markManualDebugOverlayAccess();
-    }
-    if (!debugOverlayInit) {
-      debugOverlayInit = import("../dev/debugOverlay")
-        .then(({ initDebugOverlay }) => {
-          initDebugOverlay(services);
-          markToggleActive();
-        })
-        .catch((error) => {
-          debugOverlayInit = null;
-          console.error("Debug-Overlay konnte nicht geladen werden", error);
-        });
-    } else if (reason === "manual") {
-      markToggleActive();
-    }
-    return debugOverlayInit;
-  };
-
-  if (shouldEnableDebugOverlay()) {
-    void loadDebugOverlay();
-  }
-
-  overlayToggle?.addEventListener("click", () => {
-    overlayToggle.dataset.active = "loading";
-    overlayToggle.disabled = true;
-    void loadDebugOverlay("manual").finally(() => {
-      overlayToggle.disabled = false;
-      markToggleActive();
-    });
-  });
 
   // Initialize Toast notification system
   initToastContainer();

@@ -39,36 +39,10 @@
     >
       <i class="bi bi-info-circle"></i>
     </a>
-    <button
-      type="button"
-      class="monitor-toggle"
-      data-action="debug-overlay-toggle"
-      title="Performance Monitor aktivieren"
-    >
-      <i class="bi bi-activity"></i>
-    </button>
   </div>
 </aside>
 
 <style>
-  .monitor-toggle {
-    border: none;
-    background: var(--color-surface-2);
-    color: var(--color-text-muted);
-    border-radius: var(--radius-full);
-    padding: 0.15rem 0.5rem;
-    font-size: 0.85rem;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
-  .monitor-toggle:hover,
-  .monitor-toggle[data-active="true"] {
-    background: var(--color-primary-subtle);
-    color: var(--color-primary);
-  }
   @media print {
     .no-print {
       display: none !important;
