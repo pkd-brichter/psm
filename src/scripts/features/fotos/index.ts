@@ -19,6 +19,9 @@ import { compressImage, fotoDataUrl } from "./compress";
 
 interface FotoServices {
   state?: { getState: () => any };
+  events?: {
+    subscribe?: (name: string, handler: (payload?: unknown) => void) => void;
+  };
 }
 
 interface InitFotosOptions {
@@ -84,7 +87,7 @@ function base64ToFile(base64: string, mime: string, name: string): File {
 
 export function initFotos(
   container: Element | null,
-  _services: FotoServices,
+  services: FotoServices,
   options: InitFotosOptions = {},
 ): void {
   if (!(container instanceof HTMLElement)) return;
@@ -491,6 +494,13 @@ export function initFotos(
 
   // Aktualisieren, wenn anderswo (z. B. Import) Fotos hinzukommen
   window.addEventListener("fotos:changed", () => {
+    void refresh();
+  });
+
+  // WICHTIG: Die DB ist beim Mounten oft noch NICHT verbunden (Reload, Desktop
+  // beim Öffnen einer Datei). Ohne dieses Re-Refresh bliebe die Galerie leer,
+  // obwohl Fotos in der DB liegen. Darum nach „database:connected" neu laden.
+  services.events?.subscribe?.("database:connected", () => {
     void refresh();
   });
 
