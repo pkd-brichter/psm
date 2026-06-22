@@ -3,14 +3,8 @@ import {
   detectPreferredDriver,
   setActiveDriver,
   getActiveDriverKey,
-  createDatabase,
 } from "./storage/index";
-import {
-  loadGpsPoints,
-  ensureInitialSeed,
-  applyDatabase,
-  createInitialDatabase,
-} from "./database";
+import { loadGpsPoints, ensureInitialSeed } from "./database";
 import { isMobileClient } from "./platform";
 import { getState, patchState, subscribeState, updateSlice } from "./state";
 import { emit, subscribe as subscribeEvent } from "./eventBus";
@@ -75,6 +69,14 @@ function getRegions() {
 }
 
 export async function bootstrap() {
+  // Mobile-Geräte auf die dedizierte, schlanke Mobile-Seite /m/ leiten.
+  // (?desktop=1 hebelt isMobileClient aus → kein Redirect.)
+  if (isMobileClient()) {
+    const base = import.meta.env.BASE_URL || "/";
+    window.location.replace(`${base}m/`);
+    return;
+  }
+
   // Regions für zukünftige Feature-Initialisierung
   const _regions = getRegions();
 
@@ -171,52 +173,10 @@ export async function bootstrap() {
     }
   });
 
-  // Mobile-Modus: schlanker Erfassungs-Client. Keine Datei-Auswahl – die lokale
-  // DB wird aus IndexedDB geladen bzw. (vorbefüllt) neu angelegt und direkt
-  // geöffnet. Desktop bleibt vom restlichen Flow (Datei-Auswahl) unberührt.
-  if (isMobileClient()) {
-    document.body.classList.add("mobile-mode");
-    try {
-      await autoStartMobileClient();
-    } catch (err) {
-      console.error("[Mobile] Auto-Start fehlgeschlagen", err);
-    }
-  }
-
   patchState({
     app: {
       ...getState().app,
       ready: true,
     },
   });
-}
-
-/**
- * Öffnet im Mobile-Modus ohne Nutzerinteraktion eine lokale SQLite-DB
- * (IndexedDB-persistiert) und meldet sie als verbunden, sodass die App
- * direkt nutzbar ist.
- */
-async function autoStartMobileClient(): Promise<void> {
-  if (getState().app.hasDatabase) {
-    return;
-  }
-  const sqlite = await import("./storage/sqlite");
-  if (!sqlite.isSupported()) {
-    console.warn("[Mobile] SQLite-WASM nicht verfügbar – kein Auto-Start");
-    return;
-  }
-
-  setActiveDriver("sqlite");
-  sqlite.enableIndexedDbPersistence(true);
-
-  const existing = await sqlite.openFromIndexedDb();
-  if (existing) {
-    applyDatabase(existing.data);
-  } else {
-    const initial = createInitialDatabase();
-    const created = await createDatabase(initial);
-    applyDatabase(created.data);
-  }
-
-  emit("database:connected", { driver: "sqlite" });
 }

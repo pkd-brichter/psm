@@ -3,6 +3,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Shell from '../components/Shell.astro';
 ---
 
+<script>
+  // Desktop-App-Skripte (früher global via injectScript, jetzt pro Seite,
+  // damit die schlanke Mobile-Seite /m/ sie NICHT mitlädt).
+  import '@/scripts/main.ts';
+  import '@/scripts/components/shellClient.ts';
+  import '@/scripts/pages/indexClient.ts';
+</script>
+
 <BaseLayout>
   <div data-region="startup"></div>
   <Shell />

@@ -14,16 +14,6 @@ export default defineConfig({
   integrations: [
     sitemap(),
     {
-      name: "legacy-script-loader",
-      hooks: {
-        "astro:config:setup"({ injectScript }) {
-          injectScript("page", "import '@/scripts/main.ts';");
-          injectScript("page", "import '@/scripts/components/shellClient.ts';");
-          injectScript("page", "import '@/scripts/pages/indexClient.ts';");
-        },
-      },
-    },
-    {
       // Stempelt pro Build eine eindeutige CACHE_VERSION in dist/sw.js.
       // public/sw.js ist statisch; ohne dies ändern sich die SW-Bytes pro Deploy
       // nie -> der Browser installiert keinen neuen Service Worker, alte Caches
