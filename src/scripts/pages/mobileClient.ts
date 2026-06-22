@@ -148,7 +148,7 @@ function renderShareStatus(): void {
       </button>`;
   } else {
     host.innerHTML = `
-      <span class="m-pill m-pill-ok"><i class="bi bi-check-circle"></i> Alles geteilt</span>
+      <span class="m-pill m-pill-ok"><i class="bi bi-check-circle"></i> Nichts zu teilen</span>
       <button type="button" class="m-share-btn" disabled>
         <i class="bi bi-share"></i> Teilen
       </button>`;
