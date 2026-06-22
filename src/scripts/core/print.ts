@@ -137,65 +137,6 @@ function openPopup(
   return popup;
 }
 
-/**
- * Mobil-taugliches Drucken/PDF: rendert den Inhalt in ein Overlay im
- * AKTUELLEN Dokument und ruft window.print(). Funktioniert auf iOS Safari
- * (versteckte iframes/Popups drucken dort NICHT) und am Desktop gleichermaßen.
- * Der Dokumenttitel wird gesetzt → wird als PDF-Dateiname vorgeschlagen.
- */
-export function printOverlay({
-  title = "Druck",
-  styles = "",
-  content = "",
-}: {
-  title?: string;
-  styles?: string;
-  content: string;
-}): void {
-  const safeTitle = String(title ?? "Druck").replace(/[<>]/g, "");
-  const pageStyles = `@page { size: A4; margin: 14mm; }
-    body { font-family: ${BASE_FONT_STACK}; color: #111; line-height: 1.45; }
-    h1, h2, h3 { margin: 0 0 0.75rem; }
-    .psm-print-page__body table { width: 100%; border-collapse: collapse; }
-    .psm-print-page__body th, .psm-print-page__body td { border: 1px solid #555; padding: 6px 8px; text-align: left; vertical-align: top; }
-    .nowrap { white-space: nowrap; }
-    ${PRINT_PAGE_LAYOUT_STYLES}
-    ${PRINT_BRAND_FOOTER_STYLES}
-    ${styles}`;
-
-  const bodyHtml = `<table class="psm-print-page">
-    <tfoot class="psm-print-page__foot"><tr><td></td></tr></tfoot>
-    <tbody class="psm-print-page__body"><tr><td>${content}</td></tr></tbody>
-  </table>
-  <div class="psm-print-fixed-footer">${buildPrintBrandFooter()}</div>`;
-
-  const overlay = ensureOverlay();
-  overlay.innerHTML = `<style>${pageStyles}</style>${bodyHtml}`;
-  document.body.classList.add("print-overlay-active");
-
-  const prevTitle = document.title;
-  document.title = safeTitle;
-
-  const cleanup = () => {
-    cleanupOverlay();
-    document.title = prevTitle;
-    window.removeEventListener("afterprint", cleanup);
-  };
-  window.addEventListener("afterprint", cleanup, { once: true });
-  // Sicherheitsnetz, falls afterprint nicht feuert (iOS feuert es nicht immer).
-  setTimeout(cleanup, 60000);
-
-  // Kurzer Tick, damit das Overlay-Layout steht, dann drucken.
-  setTimeout(() => {
-    try {
-      window.print();
-    } catch (err) {
-      console.error("window.print failed", err);
-      cleanup();
-    }
-  }, 80);
-}
-
 export function printHtml({
   title = "Druck",
   styles = "",

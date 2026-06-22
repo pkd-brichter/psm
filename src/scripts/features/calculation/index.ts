@@ -1895,6 +1895,7 @@ export function initCalculation(
     await printEntriesSafe([entry], state.fieldLabels, {
       title: `Berechnung – ${titleDate}`,
       headerHtml,
+      company: state.company || null,
       chunkSize: 1,
     });
   }

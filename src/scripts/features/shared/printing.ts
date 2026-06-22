@@ -3,7 +3,6 @@ import {
   PRINT_PAGE_LAYOUT_STYLES,
   PRINT_BRAND_FOOTER_STYLES,
   buildPrintBrandFooter,
-  printOverlay,
 } from "@scripts/core/print";
 import { isMobileClient } from "@scripts/core/platform";
 import {
@@ -146,12 +145,14 @@ type PrintOptions = {
   title?: string;
   headerHtml?: string;
   additionalStyles?: string;
+  /** Strukturierte Firmendaten für den PDF-Kopf (Mobile). */
+  company?: { name?: string; address?: string; headline?: string } | null;
 };
 
 /**
- * Mobil-sicheres Drucken/PDF: auf Touch-Geräten (iOS Safari druckt versteckte
- * iframes NICHT) über das Overlay des aktuellen Dokuments, sonst der bewährte
- * iframe-Weg am Desktop. Für Berechnung & Mobile-Erfassung verwenden.
+ * Mobil-sicher: auf Touch-Geräten ein ECHTES PDF erzeugen und per Share-Sheet
+ * teilen (iOS-window.print blitzt nur auf und lässt sich nicht versenden);
+ * am Desktop der bewährte iframe-Druck. Für Berechnung & Mobile-Erfassung.
  */
 export async function printEntriesSafe(
   entries: CalculationSnapshotEntry[],
@@ -162,15 +163,9 @@ export async function printEntriesSafe(
     throw new Error("No entries to print");
   }
   if (isMobileClient()) {
-    const { title = "Druck", headerHtml = "", additionalStyles = "" } = options;
-    const snapshots = entries
-      .map((e) => renderCalculationSnapshotForPrint(e, labels))
-      .join("");
-    const content = `${headerHtml}<div class="calc-snapshots-container">${snapshots}</div>`;
-    printOverlay({
-      title,
-      styles: PRINT_BASE_STYLES + (additionalStyles || ""),
-      content,
+    const { exportEntriesPdf } = await import("./pdfExport");
+    await exportEntriesPdf(entries, labels, options.company || null, {
+      title: options.title,
     });
     return;
   }

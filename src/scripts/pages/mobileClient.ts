@@ -33,10 +33,7 @@ import {
   listHistoryEntries,
   getHistoryEntryById,
 } from "@scripts/core/storage/sqlite";
-import {
-  printEntriesSafe,
-  buildCompanyPrintHeader,
-} from "@scripts/features/shared/printing";
+import { printEntriesSafe } from "@scripts/features/shared/printing";
 import { escapeHtml, formatDateFromIso } from "@scripts/core/utils";
 
 let started = false;
@@ -116,10 +113,9 @@ async function printEntry(id: string): Promise<void> {
       return;
     }
     const st = getState();
-    const headerHtml = buildCompanyPrintHeader(st.company || null);
     await printEntriesSafe([entry], st.fieldLabels, {
       title: `Berechnung – ${entryDateLabel(entry) || "PSM"}`,
-      headerHtml,
+      company: st.company || null,
       chunkSize: 1,
     });
   } catch (err) {
