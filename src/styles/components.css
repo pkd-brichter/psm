@@ -2069,3 +2069,125 @@ body.fotos-modal-open { overflow: hidden; }
   .fotos-modal-foot { justify-content: stretch; }
   .fotos-modal-foot .btn, .fotos-modal-foot a.btn { flex: 1; justify-content: center; }
 }
+
+/* ===== Fotos – Desktop: Zwei-Spalten-Galerie mit Kategorien-Sidebar ===== */
+/* Links: Aufnahme-Karte + komplette Kategorie-Navigation (immer sichtbar, mit
+   Zählern). Rechts: Galerie-Kopf + Bildraster. So ist auf einen Blick klar,
+   WAS es gibt und WAS zu tun ist. */
+.fotos-shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 4px 0;
+}
+.fotos-side {
+  position: sticky;
+  top: 64px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.fotos-main { min-width: 0; }
+
+/* Aufnahme-Karte in der Sidebar: gestapelt, volle Breite, prominenter Button. */
+.fotos-shell .fotos-capture {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 14px;
+  margin-bottom: 0;
+}
+.fotos-shell .fotos-capture-actions { flex-direction: column; align-items: stretch; }
+.fotos-shell .fotos-capture .fotos-add { width: 100%; justify-content: center; }
+.fotos-shell .fotos-capture .fotos-hint { margin-left: 0; align-self: flex-start; }
+.fotos-shell .fotos-add-hero { font-size: 1rem; padding: 11px 16px; }
+
+/* Kategorien-Navigation (Sidebar). Eigene Klasse – NICHT .fotos-nav, das ist
+   für die Lightbox-Pfeile reserviert. */
+.fotos-catnav {
+  background: var(--surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fotos-nav-cap {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 2px 8px 6px;
+}
+.fotos-navgroup { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.fotos-navgroup-cap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 8px 2px;
+}
+.fotos-navitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.fotos-navitem:hover { background: var(--surface-2); }
+.fotos-navitem-ico {
+  font-size: 1rem;
+  color: var(--text-muted);
+  width: 1.2em;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.fotos-navitem-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fotos-nav-n {
+  flex: 0 0 auto;
+  min-width: 1.5em;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.fotos-nav-n:empty { display: none; }
+.fotos-navitem.is-active {
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+}
+.fotos-navitem.is-active .fotos-navitem-ico { color: #fff; }
+.fotos-navitem.is-active .fotos-nav-n { background: rgba(255, 255, 255, 0.25); color: #fff; }
+.fotos-navitem-empty { opacity: 0.5; }
+
+/* Schmale Desktop-Fenster: Sidebar über die Galerie legen statt daneben. */
+@media (max-width: 860px) {
+  .fotos-shell { grid-template-columns: 1fr; }
+  .fotos-side { position: static; max-height: none; overflow: visible; }
+}

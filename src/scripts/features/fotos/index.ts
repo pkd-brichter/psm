@@ -49,24 +49,28 @@ interface InitFotosOptions {
   mobile?: boolean;
 }
 
-const GRUPPEN: { key: string; label: string }[] = [
-  { key: "pflanzenschutz", label: "Pflanzenschutz" },
-  { key: "betrieb", label: "Betrieb" },
+const GRUPPEN: { key: string; label: string; icon: string }[] = [
+  { key: "pflanzenschutz", label: "Pflanzenschutz", icon: "bi-flower2" },
+  { key: "betrieb", label: "Betrieb", icon: "bi-building-gear" },
 ];
-const KATEGORIEN: { key: string; label: string; group: string }[] = [
-  { key: "kultur", label: "Kultur-Dokumentation", group: "pflanzenschutz" },
-  { key: "nachweis", label: "Flächennutzungs-Nachweis", group: "pflanzenschutz" },
-  { key: "schaden", label: "Schaden / Krankheit", group: "pflanzenschutz" },
-  { key: "werkstatt", label: "Werkstatt & Fahrzeuge", group: "betrieb" },
-  { key: "werkzeug", label: "Werkzeuge & Geräte", group: "betrieb" },
-  { key: "material", label: "Ersatzteile / Material", group: "betrieb" },
-  { key: "lieferung", label: "Lieferung / Wareneingang", group: "betrieb" },
-  { key: "sonstiges", label: "Sonstiges", group: "betrieb" },
+const KATEGORIEN: { key: string; label: string; group: string; icon: string }[] = [
+  { key: "kultur", label: "Kultur-Dokumentation", group: "pflanzenschutz", icon: "bi-flower1" },
+  { key: "nachweis", label: "Flächennutzungs-Nachweis", group: "pflanzenschutz", icon: "bi-file-earmark-text" },
+  { key: "schaden", label: "Schaden / Krankheit", group: "pflanzenschutz", icon: "bi-bug" },
+  { key: "werkstatt", label: "Werkstatt & Fahrzeuge", group: "betrieb", icon: "bi-truck" },
+  { key: "werkzeug", label: "Werkzeuge & Geräte", group: "betrieb", icon: "bi-wrench-adjustable" },
+  { key: "material", label: "Ersatzteile / Material", group: "betrieb", icon: "bi-box-seam" },
+  { key: "lieferung", label: "Lieferung / Wareneingang", group: "betrieb", icon: "bi-box-arrow-in-down" },
+  { key: "sonstiges", label: "Sonstiges", group: "betrieb", icon: "bi-three-dots" },
 ];
 
 function kategorieLabel(key: string | null | undefined): string {
   if (!key) return "";
   return t(KATEGORIEN.find((k) => k.key === key)?.label || key);
+}
+
+function kategorieIcon(key: string | null | undefined): string {
+  return KATEGORIEN.find((k) => k.key === key)?.icon || "bi-tag";
 }
 
 function buildKatOptions(selected: string | null | undefined): string {
@@ -108,6 +112,37 @@ function buildFilterChips(activeKey: string, flat = false): string {
     )}</span>${chips}</div>`;
   }).join("");
   return allChip + groups;
+}
+
+/**
+ * Desktop-Kategorien-Sidebar: feste, immer sichtbare Navigation (links) mit
+ * „Alle Fotos" + den nach Gruppen geordneten Kategorien (Icon + Zähler-Badge).
+ * Klick = Galerie-Filter (und synchronisiert das Aufnahme-Ziel). Macht auf einen
+ * Blick sichtbar, WAS es gibt und WOHIN ein neues Foto kommt.
+ */
+function navItemHtml(key: string, label: string, icon: string, activeKey: string): string {
+  const active = key === activeKey ? " is-active" : "";
+  return `<button type="button" class="fotos-navitem${active}" data-filter="${key}">
+        <i class="bi ${icon} fotos-navitem-ico"></i>
+        <span class="fotos-navitem-label">${escapeHtml(t(label))}</span>
+        <span class="fotos-nav-n" aria-hidden="true"></span>
+      </button>`;
+}
+
+function buildSidebarNav(activeKey: string): string {
+  const all = navItemHtml("", "Alle Fotos", "bi-images", activeKey);
+  const groups = GRUPPEN.map((g) => {
+    const items = KATEGORIEN.filter((k) => k.group === g.key)
+      .map((k) => navItemHtml(k.key, k.label, k.icon, activeKey))
+      .join("");
+    return `<div class="fotos-navgroup">
+        <span class="fotos-navgroup-cap"><i class="bi ${g.icon}"></i> ${escapeHtml(
+          t(g.label),
+        )}</span>
+        ${items}
+      </div>`;
+  }).join("");
+  return `<span class="fotos-nav-cap">${escapeHtml(t("Kategorien"))}</span>${all}${groups}`;
 }
 
 function genUuid(): string {
@@ -289,12 +324,8 @@ export function initFotos(
   //  - Desktop legt die Karte breit aus (Dropdown + Buttons nebeneinander) und
   //    blendet im Galerie-Kopf zusätzlich Suche + „Auswählen" ein (archiveMode).
   //  - Mobil bleibt schmal/gestapelt; Filter als horizontal scrollbare Reihe.
-  const wrapClass = mobile ? "fotos-wrap fotos-wrap--mobile" : "fotos-wrap fotos-wrap--desktop";
-  const filterClass = mobile
-    ? "fotos-filter fotos-filter--scroll"
-    : "fotos-filter fotos-filter--flat";
-  host.innerHTML = `
-    <div class="${wrapClass}">
+  // Aufnahme-Karte (Kategorie-Ziel + große Buttons) – identisch für beide Layouts.
+  const captureBlock = `
       <div class="fotos-capture">
         <label class="fotos-capture-cat">
           <span>${escapeHtml(t("Kategorie für neue Fotos"))}</span>
@@ -305,9 +336,13 @@ export function initFotos(
           ${galleryLabel}
         </div>
         <span class="fotos-hint" data-role="fotos-status"></span>
-      </div>
+      </div>`;
+  // Galerie-Kopf (Titel/Zähler + Suche/Gruppieren/Sortieren/Auswählen).
+  const galheadBlock = `
       <div class="fotos-galhead" data-role="fotos-galhead" hidden>
-        <span class="fotos-galhead-title">${escapeHtml(t("Galerie"))}</span>
+        <span class="fotos-galhead-title" data-role="fotos-galtitle">${escapeHtml(
+          t("Alle Fotos"),
+        )}</span>
         <span class="fotos-count" data-role="fotos-count"></span>
         <span class="fotos-controls-spacer"></span>
         ${searchBox}
@@ -316,8 +351,34 @@ export function initFotos(
           t("Sortierung umschalten"),
         )}"></button>
         ${selectBtn}
+      </div>`;
+
+  if (archive) {
+    // Desktop: Zwei-Spalten-Galerie. Links eine feste Kategorien-Sidebar
+    // (Aufnahme-Karte + komplette Kategorie-Navigation mit Zählern), rechts der
+    // Galerie-Kopf + das Bildraster. So ist auf einen Blick klar, WAS es gibt
+    // und WAS zu tun ist (Kategorie wählen → „Foto aufnehmen").
+    host.innerHTML = `
+    <div class="fotos-wrap fotos-wrap--desktop fotos-shell">
+      <aside class="fotos-side">
+        ${captureBlock}
+        <nav class="fotos-catnav" data-role="fotos-nav">${buildSidebarNav(activeFilter)}</nav>
+      </aside>
+      <div class="fotos-main">
+        ${galheadBlock}
+        <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
+        <div class="fotos-gallery" data-role="fotos-gallery"></div>
+        ${emptyHtml}
       </div>
-      <div class="${filterClass}" data-role="fotos-filter" hidden>${buildFilterChips(
+    </div>`;
+  } else {
+    // Mobil: schlanke, aufnahme-zuerst Oberfläche (Karte oben, Filter als
+    // horizontal scrollbare Reihe, darunter das Raster).
+    host.innerHTML = `
+    <div class="fotos-wrap fotos-wrap--mobile">
+      ${captureBlock}
+      ${galheadBlock}
+      <div class="fotos-filter fotos-filter--scroll" data-role="fotos-filter" hidden>${buildFilterChips(
         activeFilter,
         true,
       )}</div>
@@ -325,6 +386,7 @@ export function initFotos(
       <div class="fotos-gallery" data-role="fotos-gallery"></div>
       ${emptyHtml}
     </div>`;
+  }
 
   const cameraInput = host.querySelector<HTMLInputElement>('[data-role="fotos-camera"]');
   const galleryInput = host.querySelector<HTMLInputElement>('[data-role="fotos-gallery-input"]');
@@ -335,6 +397,8 @@ export function initFotos(
   const emptyEl = host.querySelector<HTMLElement>('[data-role="fotos-empty"]');
   const statusEl = host.querySelector<HTMLElement>('[data-role="fotos-status"]');
   const filterBar = host.querySelector<HTMLElement>('[data-role="fotos-filter"]');
+  const navEl = host.querySelector<HTMLElement>('[data-role="fotos-nav"]');
+  const galTitleEl = host.querySelector<HTMLElement>('[data-role="fotos-galtitle"]');
   const searchEl = host.querySelector<HTMLInputElement>('[data-role="fotos-search"]');
   const sortBtn = host.querySelector<HTMLButtonElement>('[data-role="fotos-sort"]');
   const countEl = host.querySelector<HTMLElement>('[data-role="fotos-count"]');
@@ -458,10 +522,10 @@ export function initFotos(
     countEl.textContent = parts.join(" ");
   }
 
-  // Anzahl-Badge je Kategorie-Chip (aus echten DB-Counts).
+  // Anzahl-Badge je Kategorie-Chip (Mobil) UND je Sidebar-Eintrag (Desktop) –
+  // jeweils aus den echten DB-Counts.
   function updateChipCounts(): void {
-    if (!filterBar) return;
-    filterBar.querySelectorAll<HTMLElement>(".fotos-chip[data-filter]").forEach((chip) => {
+    filterBar?.querySelectorAll<HTMLElement>(".fotos-chip[data-filter]").forEach((chip) => {
       const key = chip.dataset.filter || "";
       const n = key ? dbCounts[key] || 0 : dbTotal;
       let badge = chip.querySelector<HTMLElement>(".fotos-chip-n");
@@ -474,6 +538,21 @@ export function initFotos(
       badge.textContent = n ? String(n) : "";
       chip.classList.toggle("fotos-chip-empty", !n && !!key);
     });
+    navEl?.querySelectorAll<HTMLElement>(".fotos-navitem[data-filter]").forEach((item) => {
+      const key = item.dataset.filter || "";
+      const n = key ? dbCounts[key] || 0 : dbTotal;
+      const badge = item.querySelector<HTMLElement>(".fotos-nav-n");
+      if (badge) badge.textContent = n ? String(n) : "";
+      item.classList.toggle("fotos-navitem-empty", !n && !!key);
+    });
+  }
+
+  // Galerie-Titel folgt dem aktiven Filter (z. B. „Schaden / Krankheit"),
+  // sonst „Alle Fotos" – so weiß man immer, was gerade gezeigt wird.
+  function updateGalTitle(): void {
+    if (galTitleEl) {
+      galTitleEl.textContent = activeFilter ? kategorieLabel(activeFilter) : t("Alle Fotos");
+    }
   }
 
   // ---- Thumbnails setzen + Backfill für fehlende (Altbestand/Importe) -------
@@ -562,6 +641,7 @@ export function initFotos(
     const items = getFiltered();
     updateCount(items.length);
     updateChipCounts();
+    updateGalTitle();
     // Galerie-Kopf + Filter erst zeigen, wenn überhaupt Fotos da sind – der
     // Erststart bleibt so auf die Aufnahme-Karte fokussiert (Desktop + Mobil).
     {
@@ -677,18 +757,41 @@ export function initFotos(
     updateTarget();
   });
 
-  // ---- Kategorie-Chips: reiner Galerie-Filter -------------------------------
-  // (Das Aufnahme-Ziel steuert das Dropdown – Filtern darf das Ziel nicht
-  // „springen" lassen; gilt für Desktop wie Mobil.)
-  filterBar?.addEventListener("click", (event) => {
-    const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(".fotos-chip");
-    if (!btn) return;
-    activeFilter = btn.dataset.filter || "";
+  // ---- Kategorie wählen: Galerie filtern --------------------------------------
+  // Eine Quelle der Wahrheit für Mobil-Chips UND Desktop-Sidebar. Beim Wählen
+  // einer echten Kategorie wird zusätzlich das Aufnahme-Ziel (Dropdown) auf diese
+  // Kategorie gesetzt – so ist sichtbar, wohin das nächste Foto kommt. „Alle"
+  // lässt das Aufnahme-Ziel unangetastet.
+  function syncFilterActive(): void {
     filterBar
-      .querySelectorAll(".fotos-chip")
-      .forEach((c) => c.classList.toggle("is-active", c === btn));
+      ?.querySelectorAll<HTMLElement>(".fotos-chip")
+      .forEach((c) => c.classList.toggle("is-active", (c.dataset.filter || "") === activeFilter));
+    navEl
+      ?.querySelectorAll<HTMLElement>(".fotos-navitem")
+      .forEach((c) => c.classList.toggle("is-active", (c.dataset.filter || "") === activeFilter));
+  }
+  function setActiveFilter(key: string): void {
+    activeFilter = key;
+    syncFilterActive();
+    if (key) {
+      captureKat = key;
+      try {
+        localStorage.setItem(LAST_KAT_KEY, captureKat);
+      } catch {
+        /* ignore */
+      }
+      updateTarget();
+    }
     renderLimit = 150;
     renderGallery();
+  }
+  filterBar?.addEventListener("click", (event) => {
+    const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(".fotos-chip");
+    if (btn) setActiveFilter(btn.dataset.filter || "");
+  });
+  navEl?.addEventListener("click", (event) => {
+    const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(".fotos-navitem");
+    if (btn) setActiveFilter(btn.dataset.filter || "");
   });
 
   // ---- Suche + Sortierung ---------------------------------------------------
@@ -1170,6 +1273,10 @@ export function initFotos(
   services.events?.subscribe?.("database:connected", () => void refresh());
   // Sprachwechsel: t()-gebaute Texte (Zähler/Sortier-Label/Monats-Buckets) neu erzeugen.
   window.addEventListener("i18n:changed", () => {
+    // Statisch (mit t()) gebaute Navigation neu erzeugen, damit Kategorie-Labels
+    // der Sidebar/Chips mitübersetzt werden.
+    if (navEl) navEl.innerHTML = buildSidebarNav(activeFilter);
+    if (filterBar) filterBar.innerHTML = buildFilterChips(activeFilter, true);
     updateSortBtn();
     updateTarget();
     if (selectMode) renderBulkBar();
