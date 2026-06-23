@@ -12,6 +12,7 @@ import {
 } from "@scripts/core/storage/sqlite";
 import { getActiveDriverKey } from "@scripts/core/storage";
 import { extractSliceItems } from "@scripts/core/state";
+import { exportAckerPdf, type AckerPdfField } from "./pdf";
 
 interface Services {
   state: { getState: () => any; subscribe: (fn: (s: any) => void) => void };
@@ -117,6 +118,70 @@ export function initAcker(container: Element | null, services: Services): void {
     } catch (err) {
       console.error("[Acker] GeoJSON-Export fehlgeschlagen", err);
       toast.error("Export fehlgeschlagen.");
+    }
+  }
+
+  // ---------- PDF-Export (berechnete Details) ----------
+  function standortNameById(id: string | null | undefined): string | null {
+    if (!id) return null;
+    const points = extractSliceItems<any>(services.state.getState().gps?.points) || [];
+    const p = points.find((x: any) => String(x.id) === String(id));
+    return p?.name || null;
+  }
+  function toPdfField(fl: any): AckerPdfField {
+    return {
+      name: fl.name || "Fläche",
+      kultur: fl.kultur || null,
+      standortName: standortNameById(fl.standortId),
+      eppoCode: fl.eppoCode || null,
+      color: fl.color,
+      params: { ...fl.params },
+      areaM2: fl.result?.areaM2 || 0,
+      bedsCount: fl.result?.beds?.length || 0,
+      bedMeters: fl.result?.bedMeters || 0,
+      plants: fl.result?.plants || 0,
+      latlngs: (fl.latlngs || []).map((a: any) => [Number(a[0]), Number(a[1])]),
+      beds: (fl.result?.beds || []).map((b: any) => ({ geo: b.geo })),
+    };
+  }
+  function companyForPdf() {
+    const c = services.state.getState().company || {};
+    return {
+      name: c.name || "",
+      headline: c.headline || "",
+      address: c.address || "",
+      contactEmail: c.contactEmail || "",
+    };
+  }
+  async function exportFieldPdf(fl: any): Promise<void> {
+    if (!fl || (fl.latlngs?.length || 0) < 3) {
+      toast.warning("Diese Fläche hat noch keine Geometrie.");
+      return;
+    }
+    try {
+      toast.info("PDF wird erstellt …");
+      await exportAckerPdf([toPdfField(fl)], companyForPdf(), {
+        title: fl.name || "Acker-Flaeche",
+      });
+    } catch (e) {
+      console.error("[Acker] PDF-Export fehlgeschlagen", e);
+      toast.error("PDF-Export fehlgeschlagen.");
+    }
+  }
+  async function exportAllPdf(): Promise<void> {
+    const valid = fields.filter((f) => (f.latlngs?.length || 0) >= 3);
+    if (!valid.length) {
+      toast.warning("Keine Flächen zum Exportieren.");
+      return;
+    }
+    try {
+      toast.info("PDF wird erstellt …");
+      await exportAckerPdf(valid.map(toPdfField), companyForPdf(), {
+        title: "Acker-Flaechen",
+      });
+    } catch (e) {
+      console.error("[Acker] PDF-Export fehlgeschlagen", e);
+      toast.error("PDF-Export fehlgeschlagen.");
     }
   }
 
@@ -261,16 +326,55 @@ export function initAcker(container: Element | null, services: Services): void {
     fl.outline.on("click", () => select(fl._key));
     if (sel) buildHandles(fl);
   }
+  // Eckpunkt-Handles (verschieben), dazu Mittelpunkt-Handles zum EINFÜGEN neuer
+  // Punkte und Doppel-/Rechtsklick zum LÖSCHEN – Standard-Editing wie in
+  // Karten-Tools (Leaflet.draw/Geoman/Google My Maps).
   function buildHandles(fl: any) {
     clearHandles(fl);
     fl.handles = fl.latlngs.map((ll: any, i: number) => {
-      const m = L.marker(ll, { draggable: true, icon: L.divIcon({ className: "acker-vhandle" }) }).addTo(map);
+      const m = L.marker(ll, {
+        draggable: true,
+        icon: L.divIcon({ className: "acker-vhandle" }),
+        title: "Ziehen = verschieben · Doppelklick = löschen",
+      }).addTo(map);
+      m.on("dragstart", () => hideMidHandles(fl));
       m.on("drag", (e: any) => { fl.latlngs[i] = [e.target.getLatLng().lat, e.target.getLatLng().lng]; fl.outline.setLatLngs(fl.latlngs); });
       m.on("dragend", () => recompute(fl));
+      m.on("dblclick", (e: any) => { L.DomEvent.stop(e); deleteVertex(fl, i); });
+      m.on("contextmenu", (e: any) => { L.DomEvent.stop(e); deleteVertex(fl, i); });
       return m;
     });
+    buildMidHandles(fl);
   }
-  function clearHandles(fl: any) { (fl.handles || []).forEach((m: any) => map.removeLayer(m)); fl.handles = []; }
+  function buildMidHandles(fl: any) {
+    (fl.midHandles || []).forEach((m: any) => map.removeLayer(m));
+    fl.midHandles = [];
+    const ll = fl.latlngs || [];
+    if (ll.length < 2) return;
+    for (let i = 0; i < ll.length; i++) {
+      const a = ll[i], b = ll[(i + 1) % ll.length];
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const insertAt = i + 1;
+      const m = L.marker(mid, {
+        icon: L.divIcon({ className: "acker-mhandle", html: "+" }),
+        keyboard: false,
+        title: "Klicken = Punkt einfügen",
+      }).addTo(map);
+      m.on("click", (e: any) => { L.DomEvent.stop(e); fl.latlngs.splice(insertAt, 0, mid.slice()); recompute(fl); });
+      fl.midHandles.push(m);
+    }
+  }
+  function hideMidHandles(fl: any) { (fl.midHandles || []).forEach((m: any) => map.removeLayer(m)); fl.midHandles = []; }
+  function deleteVertex(fl: any, i: number) {
+    if ((fl.latlngs?.length || 0) <= 3) { toast.warning("Eine Fläche braucht mindestens 3 Punkte."); return; }
+    fl.latlngs.splice(i, 1);
+    recompute(fl);
+  }
+  function clearHandles(fl: any) {
+    (fl.handles || []).forEach((m: any) => map.removeLayer(m));
+    (fl.midHandles || []).forEach((m: any) => map.removeLayer(m));
+    fl.handles = []; fl.midHandles = [];
+  }
 
   function recompute(fl: any) {
     fl.result = computeBeds(fl.latlngs, fl.params);
@@ -328,7 +432,9 @@ export function initAcker(container: Element | null, services: Services): void {
             <div class="r"><span>Beetmeter</span><b>${nf(fl.result?.bedMeters || 0)} m</b></div>
             <div class="r"><span>Pflanzen</span><b>${nf(fl.result?.plants || 0)}</b></div>
           </div>
+          <div class="acker-edithint"><i class="bi bi-pencil me-1"></i>Eckpunkt ziehen = verschieben · Doppelklick = löschen · „+" auf der Kante = einfügen</div>
           <div class="acker-actions">
+            <button class="btn btn-sm btn-psm-primary" data-act="pdf"><i class="bi bi-file-earmark-pdf me-1"></i>PDF-Export</button>
             <button class="btn btn-sm" data-act="recolor">Farbe</button>
             <button class="btn btn-sm" data-act="del" style="color:#ef4444;">Löschen</button>
           </div>
@@ -353,6 +459,7 @@ export function initAcker(container: Element | null, services: Services): void {
           recompute(fl);
         });
       });
+      d.querySelector('[data-act="pdf"]')!.addEventListener("click", () => void exportFieldPdf(fl));
       d.querySelector('[data-act="del"]')!.addEventListener("click", () => removeField(fl._key));
       d.querySelector('[data-act="recolor"]')!.addEventListener("click", () => {
         fl.color = palette[(palette.indexOf(fl.color) + 1) % palette.length];
@@ -382,21 +489,75 @@ export function initAcker(container: Element | null, services: Services): void {
   }
 
   // ---------- Zeichnen ----------
-  let drawing = false; let pts: any[] = []; let temp: any = null; let dots: any[] = [];
+  // Standard-Verhalten: tippen/klicken setzt Punkte; Live-Anzeige von Umfang +
+  // Fläche; Abschluss per Doppelklick, Klick auf den ersten Punkt oder „Fertig";
+  // „Punkt zurück" (Button + Backspace) macht den letzten rückgängig. Damit auch
+  // ohne Tastatur (Tablet im Feld) voll bedienbar.
+  let drawing = false; let pts: any[] = []; let temp: any = null; let fillTemp: any = null; let dots: any[] = [];
   let keySeq = 0;
+  function provisionalStats(): { areaM2: number; perimM: number; n: number } {
+    const n = pts.length;
+    if (n < 2) return { areaM2: 0, perimM: 0, n };
+    const coords = pts.map((p) => [p[1], p[0]]);
+    let perimM = 0, areaM2 = 0;
+    try { perimM = turf.length(turf.lineString(coords), { units: "kilometers" }) * 1000; } catch {}
+    if (n >= 3) {
+      const ring = coords.slice(); ring.push(coords[0]);
+      try { areaM2 = turf.area(turf.polygon([ring])); } catch {}
+    }
+    return { areaM2, perimM, n };
+  }
+  function updateDrawStatus() {
+    const s = el('[data-role="acker-drawstat"]');
+    if (!s) return;
+    const { areaM2, perimM, n } = provisionalStats();
+    if (n === 0) { s.textContent = "Noch keine Punkte – auf die Karte tippen."; return; }
+    const parts = [`${n} Punkt${n === 1 ? "" : "e"}`];
+    if (perimM) parts.push(`Umfang ${nf(perimM)} m`);
+    if (areaM2) parts.push(`Fläche ${nf(areaM2)} m² (${nf(areaM2 / 10000, 3)} ha)`);
+    s.textContent = parts.join(" · ");
+  }
+  function redrawTemp() {
+    if (!temp) temp = L.polyline(pts, { color: "#22c55e", weight: 2, dashArray: "5 5" }).addTo(map);
+    else temp.setLatLngs(pts);
+    // Ab 3 Punkten die provisorische Fläche füllen (sichtbare Live-Fläche).
+    if (pts.length >= 3) {
+      if (!fillTemp) fillTemp = L.polygon(pts, { color: "#22c55e", weight: 0, fillColor: "#22c55e", fillOpacity: 0.12, interactive: false }).addTo(map);
+      else fillTemp.setLatLngs(pts);
+    } else if (fillTemp) { map.removeLayer(fillTemp); fillTemp = null; }
+  }
   function setDraw(on: boolean) {
     drawing = on;
     el('[data-role="acker-banner"]')!.style.display = on ? "block" : "none";
     (el('[data-role="acker-draw"]') as HTMLElement).style.display = on ? "none" : "block";
     map.getContainer().style.cursor = on ? "crosshair" : "";
-    if (!on) { if (temp) map.removeLayer(temp); dots.forEach((d) => map.removeLayer(d)); temp = null; dots = []; pts = []; }
+    if (!on) {
+      if (temp) map.removeLayer(temp);
+      if (fillTemp) map.removeLayer(fillTemp);
+      dots.forEach((d) => map.removeLayer(d));
+      temp = null; fillTemp = null; dots = []; pts = [];
+    }
+    updateDrawStatus();
+  }
+  function undoPoint() {
+    if (!pts.length) return;
+    pts.pop();
+    const d = dots.pop(); if (d) map.removeLayer(d);
+    redrawTemp();
+    updateDrawStatus();
   }
   function onMapClick(e: any) {
     if (!drawing) return;
+    // Klick (nahe) auf den ersten Punkt schließt das Polygon ab.
+    if (pts.length >= 3) {
+      const p0 = map.latLngToContainerPoint(L.latLng(pts[0][0], pts[0][1]));
+      const pc = map.latLngToContainerPoint(e.latlng);
+      if (p0.distanceTo(pc) < 14) { finishDraw(); return; }
+    }
     pts.push([e.latlng.lat, e.latlng.lng]);
     dots.push(L.circleMarker(e.latlng, { radius: 4, color: "#22c55e", fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(map));
-    if (!temp) temp = L.polyline(pts, { color: "#22c55e", weight: 2, dashArray: "5 5" }).addTo(map);
-    else temp.setLatLngs(pts);
+    redrawTemp();
+    updateDrawStatus();
   }
   function finishDraw() {
     if (pts.length < 3) { toast.warning("Mindestens 3 Punkte setzen."); return; }
@@ -452,16 +613,20 @@ export function initAcker(container: Element | null, services: Services): void {
       { position: "topright" }
     ).addTo(map);
     map.on("click", onMapClick);
+    // Doppelklick schließt das Polygon ab (nur während des Zeichnens).
+    map.on("dblclick", () => { if (drawing) finishDraw(); });
 
     el('[data-role="acker-draw"]')!.addEventListener("click", () => setDraw(true));
     el('[data-role="acker-export"]')?.addEventListener("click", exportGeoJson);
+    el('[data-role="acker-export-pdf"]')?.addEventListener("click", () => void exportAllPdf());
     el('[data-role="acker-finish"]')!.addEventListener("click", finishDraw);
+    el('[data-role="acker-undo"]')?.addEventListener("click", undoPoint);
     el('[data-role="acker-cancel"]')!.addEventListener("click", () => setDraw(false));
     el('[data-role="acker-go"]')!.addEventListener("click", geocode);
     (el('[data-role="acker-q"]') as HTMLInputElement).addEventListener("keydown", (e: any) => { if (e.key === "Enter") geocode(); });
     document.addEventListener("keydown", (e: any) => {
       if (!drawing) return;
-      if (e.key === "Backspace") { e.preventDefault(); pts.pop(); const d = dots.pop(); if (d) map.removeLayer(d); if (temp) temp.setLatLngs(pts); }
+      if (e.key === "Backspace") { e.preventDefault(); undoPoint(); }
       if (e.key === "Enter") finishDraw();
       if (e.key === "Escape") setDraw(false);
     });
@@ -515,7 +680,12 @@ function renderShell(): string {
     .acker-search{display:flex;gap:6px;margin-bottom:10px}
     .acker-search input{flex:1}
     .acker-banner{display:none;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:var(--text);padding:10px 12px;border-radius:8px;font-size:12.5px;margin-bottom:10px;line-height:1.45}
-    .acker-banner .row{display:flex;gap:8px;margin-top:8px}
+    .acker-banner .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .acker-drawstat{margin-top:8px;font-weight:700;color:#16a34a;font-size:13px}
+    .acker-export-cap{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted,#94a3b8);margin-bottom:6px}
+    .acker-edithint{font-size:11px;color:var(--text-muted,#94a3b8);margin-top:10px;line-height:1.4}
+    .acker-mhandle{background:#fff;border:2px dashed #15803d;border-radius:50%;width:16px!important;height:16px!important;margin-left:-8px!important;margin-top:-8px!important;color:#15803d;font-weight:700;font-size:12px;line-height:12px;text-align:center;cursor:copy;display:flex;align-items:center;justify-content:center;opacity:.85}
+    .acker-mhandle:hover{opacity:1;background:#dcfce7}
     .acker-totals{background:var(--surface-2,rgba(255,255,255,.04));border:1px solid var(--border-1);border-radius:10px;padding:12px;margin-bottom:12px}
     .acker-totals .t-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
     .acker-totals .big{font-size:20px;font-weight:700;color:#22c55e}
@@ -535,7 +705,8 @@ function renderShell(): string {
     .acker-res{margin-top:10px;background:var(--surface-2,rgba(255,255,255,.04));border-radius:8px;padding:8px 10px}
     .acker-res .r{display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0}
     .acker-res .r b{color:#22c55e}
-    .acker-actions{display:flex;justify-content:space-between;margin-top:10px;gap:8px}
+    .acker-actions{display:flex;flex-wrap:wrap;align-items:center;margin-top:10px;gap:8px}
+    .acker-actions [data-act="pdf"]{flex:1 1 100%}
     .acker-vhandle{background:#fff;border:2px solid #15803d;border-radius:50%;width:12px!important;height:12px!important;margin-left:-6px!important;margin-top:-6px!important;cursor:grab}
     .acker-standort-dot{display:block;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
     .acker-standort-label{background:rgba(255,255,255,.92);color:#1f2937;border:1px solid #d97706;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.25)}
@@ -552,9 +723,11 @@ function renderShell(): string {
           </div>
           <button class="btn btn-psm-primary" style="width:100%" data-role="acker-draw">+ Neue Fläche zeichnen</button>
           <div class="acker-banner" data-role="acker-banner">
-            Auf die Karte klicken setzt Eckpunkte. <b>Backspace</b> = letzten Punkt löschen, <b>Enter</b> = fertig.
+            <div><b>Fläche zeichnen:</b> auf die Karte tippen/klicken setzt die Eckpunkte. Abschließen: <b>Doppelklick</b>, Klick auf den <b>ersten Punkt</b> oder „Fertig".</div>
+            <div class="acker-drawstat" data-role="acker-drawstat">Noch keine Punkte – auf die Karte tippen.</div>
             <div class="row">
               <button class="btn btn-sm btn-psm-primary" data-role="acker-finish">✓ Fertig</button>
+              <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-undo">↶ Punkt zurück</button>
               <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-cancel">Abbrechen</button>
             </div>
           </div>
@@ -565,10 +738,14 @@ function renderShell(): string {
             <div class="t-row" style="margin-top:4px"><span>Pflanzen gesamt</span><b class="big" data-t="plants">–</b></div>
           </div>
           <div class="acker-export-box" style="margin:12px 0">
-            <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-export" style="width:100%">
+            <div class="acker-export-cap">Export</div>
+            <button class="btn btn-sm btn-psm-primary" data-role="acker-export-pdf" style="width:100%">
+              <i class="bi bi-file-earmark-pdf me-1"></i>Auswertung als PDF (alle Flächen)
+            </button>
+            <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-export" style="width:100%;margin-top:6px">
               <i class="bi bi-geo me-1"></i>Als GeoJSON exportieren
             </button>
-            <div style="font-size:11px;color:var(--text-dim);margin-top:5px;line-height:1.35">Flächen + Standorte (WGS84) für QGIS / FMIS / Traktor-Terminals.</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:5px;line-height:1.35">PDF: Kennzahlen + maßstäbliche Skizze je Fläche. GeoJSON (WGS84): QGIS / FMIS / Traktor-Terminals.</div>
           </div>
           <div data-role="acker-list"></div>
           <div class="acker-empty" data-role="acker-empty">Noch keine Fläche.<br>Zum Acker navigieren, dann <b>Neue Fläche zeichnen</b>.</div>
