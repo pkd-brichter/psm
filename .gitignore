@@ -25,6 +25,9 @@ pnpm-debug.log*
 # vscode setting folder
 .vscode/
 
+# claude code local tooling (launch configs etc.)
+.claude/
+
 # astro
 .astro/
 _vendor/
