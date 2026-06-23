@@ -1369,7 +1369,7 @@ export function initImportMerge(
   void refreshImportLog(section);
   subscribeEvent("database:connected", () => void refreshImportLog(section));
   subscribeEvent("app:sectionChanged", (next) => {
-    if (next === "documentation" || next === "import") {
+    if (next === "daten" || next === "documentation" || next === "import") {
       void refreshImportLog(section);
     }
   });

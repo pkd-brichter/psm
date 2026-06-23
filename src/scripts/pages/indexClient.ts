@@ -11,6 +11,7 @@ import { initSettings } from "@scripts/features/settings";
 import { initLager } from "@scripts/features/lager";
 import { initAcker } from "@scripts/features/acker";
 import { initFotos } from "@scripts/features/fotos";
+import { initImportMerge } from "@scripts/features/importMerge";
 import { initDashboard } from "@scripts/features/dashboard";
 import { initToastContainer } from "@scripts/core/toast";
 import type { AppState } from "@scripts/core/state";
@@ -73,6 +74,12 @@ function initIndex(): void {
   initAcker(ackerContainer, services);
   const fotosContainer = document.querySelector('[data-feature="fotos"]');
   initFotos(fotosContainer, services);
+  // Zentraler Daten-Bereich: Import/Merge (eigener Sidebar-Bereich, nicht mehr in PSM).
+  const importContainer = document.querySelector('[data-feature="import-page"]');
+  initImportMerge(importContainer, {
+    state: { getState, updateSlice },
+    events: services.events,
+  });
   const dashboardContainer = document.querySelector('[data-feature="dashboard"]');
   initDashboard(dashboardContainer, services);
 

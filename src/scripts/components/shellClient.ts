@@ -59,6 +59,12 @@ const AREAS: AreaDef[] = [
     icon: "bi-camera",
     sections: [{ section: "fotos", label: "Fotos", icon: "bi-camera" }],
   },
+  {
+    id: "daten",
+    label: "Daten",
+    icon: "bi-database",
+    sections: [{ section: "daten", label: "Import", icon: "bi-cloud-upload" }],
+  },
 ];
 
 /**
@@ -77,7 +83,8 @@ const SECTION_TO_AREA: Partial<Record<Section, string>> = {
   settings: "psm",
   gps: "psm",
   lookup: "psm",
-  import: "psm",
+  import: "daten",
+  daten: "daten",
 };
 
 function areaById(id: string): AreaDef | undefined {
