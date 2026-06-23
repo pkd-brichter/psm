@@ -1172,6 +1172,56 @@ export async function deleteAckerflaeche(payload: {
   return await callWorker("deleteAckerflaeche", payload);
 }
 
+// Kulturführung (Anbau-Belegung + Maßnahmen) – Bridge zur Worker-Source-of-Truth.
+// Diese 6+1 Actions bilden 1:1 ein künftiges REST-Backend ab
+// (GET/POST/DELETE /anbau, /massnahme + POST /massnahme/import-psm).
+export async function listAnbau(payload?: {
+  flaecheTyp?: string;
+  flaecheId?: string;
+  status?: string;
+}): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("listAnbau", payload || {});
+}
+
+export async function upsertAnbau(payload: any): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("upsertAnbau", payload);
+}
+
+export async function deleteAnbau(payload: { id: string }): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("deleteAnbau", payload);
+}
+
+export async function listMassnahmen(payload?: {
+  flaecheTyp?: string;
+  flaecheId?: string;
+  anbauId?: string;
+  art?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+}): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("listMassnahmen", payload || {});
+}
+
+export async function upsertMassnahme(payload: any): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("upsertMassnahme", payload);
+}
+
+export async function deleteMassnahme(payload: { id: string }): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("deleteMassnahme", payload);
+}
+
+export async function importPsmAsMassnahmen(): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("importPsmAsMassnahmen");
+}
+
 // ============================================
 // Saved EPPO/BBCH Favorites API
 // ============================================

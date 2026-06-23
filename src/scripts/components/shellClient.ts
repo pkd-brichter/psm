@@ -51,7 +51,10 @@ const AREAS: AreaDef[] = [
     id: "acker",
     label: "Acker-Planer",
     icon: "bi-map",
-    sections: [{ section: "acker", label: "Acker-Planer", icon: "bi-map" }],
+    sections: [
+      { section: "acker", label: "Karte", icon: "bi-map" },
+      { section: "kultur", label: "Kulturführung", icon: "bi-clipboard2-pulse" },
+    ],
   },
   {
     id: "fotos",
@@ -79,6 +82,7 @@ const SECTION_TO_AREA: Partial<Record<Section, string>> = {
   history: "psm",
   report: "psm",
   acker: "acker",
+  kultur: "acker",
   fotos: "fotos",
   settings: "psm",
   gps: "psm",

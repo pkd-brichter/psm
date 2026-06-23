@@ -1165,6 +1165,307 @@ async function deleteAckerflaeche(payload = {}) {
 }
 
 // ============================================
+// Kulturführung (Anbau-Belegung + Maßnahmen) Functions
+// ============================================
+// Stabile, backend-taugliche Flächen-Referenz: (flaeche_typ, flaeche_id).
+//   flaeche_typ = 'acker' -> ackerflaechen.id  (Freiland-Polygon)
+//   flaeche_typ = 'haus'  -> gps_points.id     (Gewächshaus-Standort)
+// Bewusst KEINE SQL-Fremdschlüssel (polymorphe Referenz); referenzielle
+// Integrität liegt in der App. Tabellenname 'anbau_kultur' (nicht 'anbau'),
+// um Verwechslung mit der Spalte kultur_mittel.anbau zu vermeiden. Ein
+// künftiges Backend kann diese Tabellen 1:1 als REST-Ressourcen spiegeln.
+
+function ensureAnbauTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS anbau_kultur (
+      id TEXT PRIMARY KEY,
+      flaeche_typ TEXT NOT NULL,
+      flaeche_id TEXT NOT NULL,
+      kultur TEXT,
+      eppo_code TEXT,
+      status TEXT NOT NULL DEFAULT 'geplant',
+      pflanz_datum TEXT,
+      ernte_datum TEXT,
+      color TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_anbau_unit ON anbau_kultur(flaeche_typ, flaeche_id);
+    CREATE INDEX IF NOT EXISTS idx_anbau_status ON anbau_kultur(status);
+    CREATE INDEX IF NOT EXISTS idx_anbau_pflanz ON anbau_kultur(pflanz_datum);
+  `);
+}
+
+function ensureMassnahmeTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS massnahme (
+      id TEXT PRIMARY KEY,
+      flaeche_typ TEXT NOT NULL,
+      flaeche_id TEXT NOT NULL,
+      anbau_id TEXT,
+      art TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'geplant',
+      plan_datum TEXT,
+      erledigt_datum TEXT,
+      menge REAL,
+      einheit TEXT,
+      mittel TEXT,
+      history_id INTEGER,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_massnahme_unit ON massnahme(flaeche_typ, flaeche_id);
+    CREATE INDEX IF NOT EXISTS idx_massnahme_anbau ON massnahme(anbau_id);
+    CREATE INDEX IF NOT EXISTS idx_massnahme_art ON massnahme(art, status);
+    CREATE INDEX IF NOT EXISTS idx_massnahme_plan ON massnahme(plan_datum);
+    CREATE INDEX IF NOT EXISTS idx_massnahme_history ON massnahme(history_id);
+  `);
+}
+
+function mapAnbauRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    flaecheTyp: row.flaeche_typ ?? null,
+    flaecheId: row.flaeche_id != null ? String(row.flaeche_id) : null,
+    kultur: row.kultur ?? null,
+    eppoCode: row.eppo_code ?? null,
+    status: row.status ?? "geplant",
+    pflanzDatum: row.pflanz_datum ?? null,
+    ernteDatum: row.ernte_datum ?? null,
+    color: row.color ?? null,
+    notes: row.notes ?? null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+function mapMassnahmeRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    flaecheTyp: row.flaeche_typ ?? null,
+    flaecheId: row.flaeche_id != null ? String(row.flaeche_id) : null,
+    anbauId: row.anbau_id ?? null,
+    art: row.art ?? "sonstiges",
+    status: row.status ?? "geplant",
+    planDatum: row.plan_datum ?? null,
+    erledigtDatum: row.erledigt_datum ?? null,
+    menge: row.menge != null ? Number(row.menge) : null,
+    einheit: row.einheit ?? null,
+    mittel: row.mittel ?? null,
+    historyId: row.history_id != null ? Number(row.history_id) : null,
+    notes: row.notes ?? null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+async function listAnbau(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureAnbauTable();
+  const where = [];
+  const bind = [];
+  if (payload.flaecheTyp) { where.push("flaeche_typ = ?"); bind.push(String(payload.flaecheTyp)); }
+  if (payload.flaecheId) { where.push("flaeche_id = ?"); bind.push(String(payload.flaecheId)); }
+  if (payload.status) { where.push("status = ?"); bind.push(String(payload.status)); }
+  const sql =
+    "SELECT * FROM anbau_kultur" +
+    (where.length ? " WHERE " + where.join(" AND ") : "") +
+    " ORDER BY COALESCE(pflanz_datum, created_at) ASC";
+  const rows = [];
+  db.exec({ sql, bind, rowMode: "object", callback: (row) => rows.push(mapAnbauRow(row)) });
+  return { rows };
+}
+
+async function upsertAnbau(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureAnbauTable();
+  const id = String(payload.id || generateKulturMittelId());
+  const now = new Date().toISOString();
+  const v = [
+    String(payload.flaecheTyp || ""),
+    String(payload.flaecheId || ""),
+    payload.kultur != null ? String(payload.kultur) : null,
+    payload.eppoCode != null ? String(payload.eppoCode) : null,
+    String(payload.status || "geplant"),
+    payload.pflanzDatum != null ? String(payload.pflanzDatum) : null,
+    payload.ernteDatum != null ? String(payload.ernteDatum) : null,
+    payload.color != null ? String(payload.color) : null,
+    payload.notes != null ? String(payload.notes) : null,
+  ];
+  const exists = db.selectValue("SELECT 1 FROM anbau_kultur WHERE id = ? LIMIT 1", [id]);
+  if (exists) {
+    const stmt = db.prepare(
+      "UPDATE anbau_kultur SET flaeche_typ=?, flaeche_id=?, kultur=?, eppo_code=?, status=?, pflanz_datum=?, ernte_datum=?, color=?, notes=?, updated_at=? WHERE id=?"
+    );
+    stmt.bind([...v, now, id]); stmt.step(); stmt.finalize();
+  } else {
+    const stmt = db.prepare(
+      "INSERT INTO anbau_kultur (flaeche_typ, flaeche_id, kultur, eppo_code, status, pflanz_datum, ernte_datum, color, notes, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+    );
+    stmt.bind([...v, now, now, id]); stmt.step(); stmt.finalize();
+  }
+  let record = null;
+  db.exec({ sql: "SELECT * FROM anbau_kultur WHERE id = ? LIMIT 1", bind: [id], rowMode: "object", callback: (row) => { if (!record) record = mapAnbauRow(row); } });
+  return record;
+}
+
+async function deleteAnbau(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureAnbauTable();
+  ensureMassnahmeTable();
+  const id = String(payload.id ?? "").trim();
+  if (!id) throw new Error("ID fehlt.");
+  // Maßnahmen bleiben erhalten, werden aber vom gelöschten Anbau entkoppelt.
+  const upd = db.prepare("UPDATE massnahme SET anbau_id = NULL WHERE anbau_id = ?");
+  upd.bind([id]); upd.step(); upd.finalize();
+  const stmt = db.prepare("DELETE FROM anbau_kultur WHERE id = ?");
+  stmt.bind([id]); stmt.step(); stmt.finalize();
+  return { success: true };
+}
+
+async function listMassnahmen(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureMassnahmeTable();
+  const where = [];
+  const bind = [];
+  if (payload.flaecheTyp) { where.push("flaeche_typ = ?"); bind.push(String(payload.flaecheTyp)); }
+  if (payload.flaecheId) { where.push("flaeche_id = ?"); bind.push(String(payload.flaecheId)); }
+  if (payload.anbauId) { where.push("anbau_id = ?"); bind.push(String(payload.anbauId)); }
+  if (payload.art) { where.push("art = ?"); bind.push(String(payload.art)); }
+  if (payload.status) { where.push("status = ?"); bind.push(String(payload.status)); }
+  if (payload.from) { where.push("COALESCE(plan_datum, erledigt_datum) >= ?"); bind.push(String(payload.from)); }
+  if (payload.to) { where.push("COALESCE(plan_datum, erledigt_datum) <= ?"); bind.push(String(payload.to)); }
+  const sql =
+    "SELECT * FROM massnahme" +
+    (where.length ? " WHERE " + where.join(" AND ") : "") +
+    " ORDER BY COALESCE(plan_datum, erledigt_datum, created_at) ASC";
+  const rows = [];
+  db.exec({ sql, bind, rowMode: "object", callback: (row) => rows.push(mapMassnahmeRow(row)) });
+  return { rows };
+}
+
+async function upsertMassnahme(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureMassnahmeTable();
+  const id = String(payload.id || generateKulturMittelId());
+  const now = new Date().toISOString();
+  const num = (x) => (x != null && Number.isFinite(Number(x)) ? Number(x) : null);
+  const v = [
+    String(payload.flaecheTyp || ""),
+    String(payload.flaecheId || ""),
+    payload.anbauId != null ? String(payload.anbauId) : null,
+    String(payload.art || "sonstiges"),
+    String(payload.status || "geplant"),
+    payload.planDatum != null ? String(payload.planDatum) : null,
+    payload.erledigtDatum != null ? String(payload.erledigtDatum) : null,
+    num(payload.menge),
+    payload.einheit != null ? String(payload.einheit) : null,
+    payload.mittel != null ? String(payload.mittel) : null,
+    num(payload.historyId),
+    payload.notes != null ? String(payload.notes) : null,
+  ];
+  const exists = db.selectValue("SELECT 1 FROM massnahme WHERE id = ? LIMIT 1", [id]);
+  if (exists) {
+    const stmt = db.prepare(
+      "UPDATE massnahme SET flaeche_typ=?, flaeche_id=?, anbau_id=?, art=?, status=?, plan_datum=?, erledigt_datum=?, menge=?, einheit=?, mittel=?, history_id=?, notes=?, updated_at=? WHERE id=?"
+    );
+    stmt.bind([...v, now, id]); stmt.step(); stmt.finalize();
+  } else {
+    const stmt = db.prepare(
+      "INSERT INTO massnahme (flaeche_typ, flaeche_id, anbau_id, art, status, plan_datum, erledigt_datum, menge, einheit, mittel, history_id, notes, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    );
+    stmt.bind([...v, now, now, id]); stmt.step(); stmt.finalize();
+  }
+  let record = null;
+  db.exec({ sql: "SELECT * FROM massnahme WHERE id = ? LIMIT 1", bind: [id], rowMode: "object", callback: (row) => { if (!record) record = mapMassnahmeRow(row); } });
+  return record;
+}
+
+async function deleteMassnahme(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureMassnahmeTable();
+  const id = String(payload.id ?? "").trim();
+  if (!id) throw new Error("ID fehlt.");
+  const stmt = db.prepare("DELETE FROM massnahme WHERE id = ?");
+  stmt.bind([id]); stmt.step(); stmt.finalize();
+  return { success: true };
+}
+
+// Übernimmt bestehende Pflanzenschutz-Einträge (history) als erledigte
+// Maßnahmen (art='chemisch_psm') in die Kulturführung – ohne Duplizierung
+// (Verknüpfung über history_id). Konservatives, eindeutiges Matching:
+//   - history.gps_point_id == Gewächshaus-Standort  -> typ 'haus'
+//   - genau EINE ackerflaeche mit standort_id == gps_point_id -> typ 'acker'
+//   - sonst übersprungen (bleibt in der PSM-Historie sichtbar).
+async function importPsmAsMassnahmen() {
+  if (!db) throw new Error("Database not initialized");
+  ensureMassnahmeTable();
+  const have = new Set();
+  db.exec({
+    sql: "SELECT DISTINCT history_id AS h FROM massnahme WHERE history_id IS NOT NULL",
+    rowMode: "object",
+    callback: (r) => { if (r.h != null) have.add(Number(r.h)); },
+  });
+  const houseIds = new Set();
+  try {
+    db.exec({
+      sql: "SELECT id FROM gps_points WHERE kind = 'gewaechshaus'",
+      rowMode: "object",
+      callback: (r) => houseIds.add(String(r.id)),
+    });
+  } catch {}
+  const fieldByStandort = new Map();
+  try {
+    db.exec({
+      sql: "SELECT id, standort_id FROM ackerflaechen WHERE standort_id IS NOT NULL",
+      rowMode: "object",
+      callback: (r) => {
+        const k = String(r.standort_id);
+        if (!fieldByStandort.has(k)) fieldByStandort.set(k, []);
+        fieldByStandort.get(k).push(String(r.id));
+      },
+    });
+  } catch {}
+  const rows = [];
+  try {
+    db.exec({
+      sql: "SELECT id, date_iso, kultur, gps_point_id FROM history WHERE gps_point_id IS NOT NULL ORDER BY id ASC",
+      rowMode: "object",
+      callback: (r) => rows.push(r),
+    });
+  } catch {
+    return { imported: 0, skipped: 0, total: 0 };
+  }
+  let imported = 0, skipped = 0;
+  const now = new Date().toISOString();
+  for (const r of rows) {
+    const hid = Number(r.id);
+    if (have.has(hid)) continue;
+    const gp = r.gps_point_id != null ? String(r.gps_point_id) : "";
+    let typ = null, fid = null;
+    if (gp && houseIds.has(gp)) { typ = "haus"; fid = gp; }
+    else if (gp && fieldByStandort.has(gp) && fieldByStandort.get(gp).length === 1) {
+      typ = "acker"; fid = fieldByStandort.get(gp)[0];
+    }
+    if (!typ) { skipped++; continue; }
+    const id = generateKulturMittelId();
+    const stmt = db.prepare(
+      "INSERT INTO massnahme (flaeche_typ, flaeche_id, anbau_id, art, status, plan_datum, erledigt_datum, menge, einheit, mittel, history_id, notes, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    );
+    stmt.bind([typ, fid, null, "chemisch_psm", "erledigt", null, r.date_iso || null, null, null, null, hid, r.kultur != null ? String(r.kultur) : null, now, now, id]);
+    stmt.step(); stmt.finalize();
+    have.add(hid); imported++;
+  }
+  return { imported, skipped, total: rows.length };
+}
+
+// ============================================
 // Mittel-Lager (Bestand / Verbrauch) Functions
 // ============================================
 
@@ -2068,6 +2369,28 @@ self.onmessage = async function (event) {
       case "deleteAckerflaeche":
         result = await deleteAckerflaeche(payload);
         break;
+      // Kulturführung (Anbau-Belegung + Maßnahmen)
+      case "listAnbau":
+        result = await listAnbau(payload);
+        break;
+      case "upsertAnbau":
+        result = await upsertAnbau(payload);
+        break;
+      case "deleteAnbau":
+        result = await deleteAnbau(payload);
+        break;
+      case "listMassnahmen":
+        result = await listMassnahmen(payload);
+        break;
+      case "upsertMassnahme":
+        result = await upsertMassnahme(payload);
+        break;
+      case "deleteMassnahme":
+        result = await deleteMassnahme(payload);
+        break;
+      case "importPsmAsMassnahmen":
+        result = await importPsmAsMassnahmen();
+        break;
       // Saved EPPO/BBCH favorites
       case "listSavedEppo":
         result = await listSavedEppo(payload);
@@ -2941,6 +3264,26 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 21 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 22: Kulturführung (anbau_kultur + massnahme)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const kulturTablesMissing =
+    !hasTable(db, "anbau_kultur") || !hasTable(db, "massnahme");
+  if (kulturTablesMissing || postMigrationVersion < 22) {
+    console.log("Migrating database to version 22 (Kulturführung)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureAnbauTable(db);
+      ensureMassnahmeTable(db);
+      db.exec("PRAGMA user_version = 22");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 22 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 22 failed:", error);
       throw error;
     }
   }

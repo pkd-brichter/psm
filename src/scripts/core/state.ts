@@ -118,6 +118,7 @@ export interface AppState {
       | "import"
       | "lager"
       | "acker"
+      | "kultur"
       | "fotos"
       | "daten";
     storageDriver: "memory" | "sqlite" | "filesystem" | "localstorage";

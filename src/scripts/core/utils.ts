@@ -212,3 +212,51 @@ export function normalizeDateInput(value: string | null | undefined): {
     iso: parsed.toISOString(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// ISO-8601 Kalenderwoche (Donnerstag-Regel). Rein & wiederverwendbar:
+// Wetter-Aggregation, Anbauplan-Board-Spalten, künftige Reports/Backend.
+// ---------------------------------------------------------------------------
+
+/** ISO-8601 Kalenderwoche + zugehöriges ISO-Wochenjahr eines Datums. */
+export function getIsoWeek(date: Date): { year: number; week: number } {
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  );
+  // Donnerstag der aktuellen Woche bestimmt das ISO-Wochenjahr.
+  const day = d.getUTCDay() || 7; // Mo=1 … So=7
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const year = d.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return { year, week };
+}
+
+/** Stabiler, sortierbarer Wochen-Schlüssel, z. B. "2026-W07". */
+export function weekKey(date: Date): string {
+  const { year, week } = getIsoWeek(date);
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Schlüssel direkt aus (Jahr, Woche). */
+export function weekKeyOf(year: number, week: number): string {
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Montag 00:00 (lokal) der gegebenen ISO-Woche. */
+export function weekStart(year: number, week: number): Date {
+  // 4. Januar liegt per Definition in KW 1.
+  const jan4 = new Date(year, 0, 4);
+  const jan4Day = jan4.getDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(jan4.getDate() - (jan4Day - 1));
+  const monday = new Date(week1Monday);
+  monday.setDate(week1Monday.getDate() + (week - 1) * 7);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+/** Kurzlabel "KW 07" für die UI. */
+export function weekLabel(week: number): string {
+  return `KW ${String(week).padStart(2, "0")}`;
+}

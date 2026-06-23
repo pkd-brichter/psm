@@ -53,13 +53,50 @@ erscheinen oben im **Header** als Reiter. Definition: `src/scripts/components/sh
 |---|---|
 | **Start** | Dashboard |
 | **PSM** | Neu erfassen (`calc`) · Übersicht (`documentation`) · Lager (`lager`) · Einstellungen (`settings`) |
-| **Acker-Planer** | Acker-Planer (`acker`, Leaflet – lazy) |
+| **Acker-Planer** | Karte (`acker`, Leaflet – lazy) · Kulturführung (`kultur`) |
 | **Fotos** | Foto-Galerie (`fotos`) |
 | **Daten** | Import (`daten`) |
 
 > **Einstellungen sind PSM-spezifisch** (Mittel/EPPO/BBCH/GPS) und liegen daher im PSM-Header,
 > nicht in der Sidebar. **Import liegt jetzt im zentralen Bereich „Daten"** (nicht mehr unter PSM).
 > Mobil ersetzt eine **untere Tab-Leiste** die Sidebar (nur **PSM** + **Fotos**).
+
+## 🌱 Kulturführung (`features/kultur/`)
+
+Zweiter Reiter im Acker-Bereich – macht aus dem reinen Flächen-Planer eine **Kultur-Management-App**
+(Desktop-only; im Mobil-Client `/m/` bewusst nicht enthalten). Pro **Fläche** (Freiland **oder**
+Gewächshaus) auf einen Blick: *aktuelle Kultur (JETZT) · nächste geplante (NÄCHSTE) · Maßnahmen ·
+Wetter* – alles **Kalenderwochen-basiert**.
+
+- **Management-Einheit = `(flaeche_typ, flaeche_id)`** – polymorphe, backend-taugliche Referenz:
+  `'acker'` → `ackerflaechen.id` (gezeichnetes Polygon), `'haus'` → `gps_points.id` mit
+  `kind='gewaechshaus'` (Häuser/Solarhalle aus dem Seed). Koordinate je Einheit = GPS-Punkt bzw.
+  Polygon-Schwerpunkt (Eckpunkt-Mittel, **ohne** turf – leichteres Lazy-Load).
+- **Tabellen** (Migration `user_version` **22**, Worker = Source of Truth):
+  - `anbau_kultur` – Kultur-Belegung/Zeitachse (status `geplant`/`aktiv`/`abgeschlossen`,
+    `pflanz_datum`, `ernte_datum`, Farbe, Notiz). Tabellenname bewusst ≠ Spalte `kultur_mittel.anbau`.
+  - `massnahme` – Maßnahmen (`art`: mechanisch/chemisch_psm/duengung/nuetzlinge/bewaesserung/
+    monitoring/sonstiges; `status` geplant/erledigt; Datum, Menge/Einheit, Mittel, Notiz). Spalte
+    `history_id` **verlinkt** bestehende Pflanzenschutz-Einträge (`history`), statt sie zu duplizieren.
+- **Pflanzenschutz-Auto-Import** (`importPsmAsMassnahmen`, im Worker): vorhandene `history`-Einträge
+  werden als erledigte `chemisch_psm`-Maßnahmen übernommen – idempotent über `history_id`,
+  konservatives Matching (Gewächshaus via `gps_point_id`, Freiland via eindeutige `standort_id`).
+- **Wetter** (`features/kultur/weather.ts`): **Open-Meteo**, client-side, kein API-Key. Forecast-API
+  (`past_days=92`, `forecast_days=16`), auf ISO-KW aggregiert, in `localStorage` 1×/Tag gecacht,
+  Trennung an der aktuellen KW (Ist/Archiv ↔ Vorhersage). Attribution: *Open-Meteo (CC BY 4.0)*.
+- **Anbauplan-Board** – hof-weite Gantt-Übersicht (alle Flächen × KW), Kultur-Balken + Maßnahmen-Marker.
+
+### 🔌 Künftiges Backend (für neue Agenten)
+
+Diese App ist auf einen späteren echten Server vorbereitet. **Bitte beibehalten:** sämtlicher
+Datenzugriff läuft über die Bridge `storage/sqlite.ts` (`callWorker(action, payload)`). Die
+Kulturführungs-Actions bilden 1:1 REST-Ressourcen ab:
+`listAnbau/upsertAnbau/deleteAnbau` → `GET/POST/DELETE /anbau`,
+`listMassnahmen/upsertMassnahme/deleteMassnahme` → `… /massnahme`,
+`importPsmAsMassnahmen` → `POST /massnahme/import-psm`. `(flaeche_typ, flaeche_id)` + `history_id`
+sind die relationalen Schlüssel, die ein Backend mit echten FKs absichern würde; das localStorage-
+Wetter wird zum server-seitig gecachten Proxy. **Wird der Worker später durch einen HTTP-Client
+ersetzt, ist das ein Ein-Schicht-Wechsel in `storage/sqlite.ts` – die Feature-UIs bleiben unverändert.**
 
 ## 🗄️ Daten- & Speicher-Modell
 

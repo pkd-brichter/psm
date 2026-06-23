@@ -11,7 +11,7 @@ import {
   persistSqliteDatabaseFile,
 } from "@scripts/core/storage/sqlite";
 import { getActiveDriverKey } from "@scripts/core/storage";
-import { extractSliceItems } from "@scripts/core/state";
+import { extractSliceItems, updateSlice } from "@scripts/core/state";
 
 interface Services {
   state: { getState: () => any; subscribe: (fn: (s: any) => void) => void };
@@ -389,6 +389,20 @@ export function initAcker(container: Element | null, services: Services): void {
     persistField(fl);
   }
 
+  // Wechselt zum Kulturführung-Reiter und wählt dort diese Fläche vor.
+  function openKultur(fl: any) {
+    updateSlice("app", (app: any) => ({ ...app, activeSection: "kultur" }));
+    if (fl?.id) {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("psm:openKultur", { detail: { typ: "acker", id: String(fl.id) } })
+        );
+      } catch {}
+    } else {
+      toast.info("Fläche wird gespeichert – in der Kulturführung gleich wählbar.");
+    }
+  }
+
   // ---------- Kontextmenü (Rechtsklick) ----------
   let ctxEl: HTMLElement | null = null;
   const closeCtx = () => {
@@ -585,6 +599,7 @@ export function initAcker(container: Element | null, services: Services): void {
     const { x, y } = evXY(e);
     const editing = !!fl.editing;
     openCtx(x, y, [
+      { icon: '<i class="bi bi-clipboard2-pulse"></i>', label: "Kulturführung öffnen", action: () => openKultur(fl) },
       { icon: '<i class="bi bi-pencil"></i>', label: "Umbenennen", action: () => focusRename(fl) },
       kulturSubmenu(fl),
       colorSubmenu(fl),

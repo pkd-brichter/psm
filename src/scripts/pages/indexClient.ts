@@ -10,6 +10,7 @@ import { initDocumentation } from "@scripts/features/documentation";
 import { initSettings } from "@scripts/features/settings";
 import { initLager } from "@scripts/features/lager";
 import { initAcker } from "@scripts/features/acker";
+import { initKultur } from "@scripts/features/kultur";
 import { initFotos } from "@scripts/features/fotos";
 import { initImportMerge } from "@scripts/features/importMerge";
 import { initI18n } from "@scripts/core/i18n";
@@ -75,6 +76,8 @@ function initIndex(): void {
   initLager(lagerContainer, services);
   const ackerContainer = document.querySelector('[data-feature="acker"]');
   initAcker(ackerContainer, services);
+  const kulturContainer = document.querySelector('[data-feature="kultur"]');
+  initKultur(kulturContainer, services);
   const fotosContainer = document.querySelector('[data-feature="fotos"]');
   initFotos(fotosContainer, services, { archiveMode: true });
   // Zentraler Daten-Bereich: Import/Merge (eigener Sidebar-Bereich, nicht mehr in PSM).
