@@ -1236,10 +1236,12 @@ function ensureFotosTable(targetDb = db) {
       width INTEGER,
       height INTEGER,
       bytes INTEGER,
-      data TEXT NOT NULL
+      data TEXT NOT NULL,
+      data_thumb TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_fotos_created ON fotos(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_fotos_uuid ON fotos(client_uuid);
+    CREATE INDEX IF NOT EXISTS idx_fotos_kategorie ON fotos(kategorie, created_at DESC);
   `);
 }
 
@@ -1963,6 +1965,21 @@ self.onmessage = async function (event) {
         break;
       case "updateFoto":
         result = await updateFoto(payload);
+        break;
+      case "setFotoThumb":
+        result = await setFotoThumb(payload);
+        break;
+      case "getFotoCounts":
+        result = await getFotoCounts();
+        break;
+      case "deleteFotosByIds":
+        result = await deleteFotosByIds(payload);
+        break;
+      case "bulkUpdateFotoKategorie":
+        result = await bulkUpdateFotoKategorie(payload);
+        break;
+      case "exportFotosByIds":
+        result = await exportFotosByIds(payload);
         break;
       case "clearFotos":
         result = await clearFotos();
@@ -2901,6 +2918,29 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 20 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 21: Foto-Thumbnail-Spalte (Galerie lädt nicht mehr das Vollbild)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  if (postMigrationVersion < 21) {
+    console.log("Migrating database to version 21 (foto thumbnail)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureFotosTable(db);
+      if (!hasColumn(db, "fotos", "data_thumb")) {
+        db.exec("ALTER TABLE fotos ADD COLUMN data_thumb TEXT");
+      }
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_fotos_kategorie ON fotos(kategorie, created_at DESC)"
+      );
+      db.exec("PRAGMA user_version = 21");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 21 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 21 failed:", error);
       throw error;
     }
   }
@@ -4268,8 +4308,8 @@ async function appendFoto(payload = {}) {
   const stmt = db.prepare(
     `INSERT INTO fotos
       (client_uuid, created_at, entry_uuid, kategorie, titel, standort, kultur,
-       gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data, data_thumb)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   stmt
     .bind([
@@ -4289,6 +4329,7 @@ async function appendFoto(payload = {}) {
       payload.height ?? null,
       payload.bytes ?? null,
       String(payload.data),
+      payload.thumb != null ? String(payload.thumb) : null,
     ])
     .step();
   stmt.finalize();
@@ -4305,7 +4346,7 @@ async function listFotos(payload = {}) {
   db.exec({
     sql: `SELECT id, client_uuid, created_at, entry_uuid, kategorie, titel,
                  standort, kultur, gps_latitude, gps_longitude, notiz, device, mime,
-                 width, height, bytes
+                 width, height, bytes, data_thumb
           FROM fotos ORDER BY datetime(created_at) DESC, id DESC LIMIT ?`,
     bind: [limit],
     rowMode: "object",
@@ -4327,6 +4368,108 @@ async function listFotos(payload = {}) {
         width: row.width,
         height: row.height,
         bytes: row.bytes,
+        thumb: row.data_thumb || null,
+      });
+    },
+  });
+  return { items: rows };
+}
+
+// Thumbnail nachtragen (Backfill für Altbestand/Importe ohne data_thumb).
+async function setFotoThumb(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const id = payload && payload.id != null ? Number(payload.id) : null;
+  if (id == null || !payload.thumb) return { success: false };
+  const stmt = db.prepare("UPDATE fotos SET data_thumb = ? WHERE id = ?");
+  stmt.bind([String(payload.thumb), id]).step();
+  stmt.finalize();
+  return { success: true };
+}
+
+// Anzahl Fotos je Kategorie (für Chip-Badges / Übersicht).
+async function getFotoCounts() {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const counts = {};
+  let total = 0;
+  let totalBytes = 0;
+  db.exec({
+    sql: "SELECT kategorie, COUNT(*) AS n, COALESCE(SUM(bytes),0) AS b FROM fotos GROUP BY kategorie",
+    rowMode: "object",
+    callback: (row) => {
+      counts[row.kategorie || ""] = Number(row.n) || 0;
+      total += Number(row.n) || 0;
+      totalBytes += Number(row.b) || 0;
+    },
+  });
+  return { counts, total, totalBytes };
+}
+
+// Mehrere Fotos auf einmal löschen (Bulk-Aufräumen).
+async function deleteFotosByIds(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const ids = Array.isArray(payload?.ids)
+    ? payload.ids.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+    : [];
+  if (!ids.length) return { success: true, deleted: 0 };
+  const placeholders = ids.map(() => "?").join(",");
+  db.exec({ sql: `DELETE FROM fotos WHERE id IN (${placeholders})`, bind: ids });
+  return { success: true, deleted: ids.length };
+}
+
+// Kategorie mehrerer Fotos auf einmal ändern.
+async function bulkUpdateFotoKategorie(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const ids = Array.isArray(payload?.ids)
+    ? payload.ids.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+    : [];
+  const kategorie = payload?.kategorie != null ? String(payload.kategorie) : null;
+  if (!ids.length) return { success: true, updated: 0 };
+  const placeholders = ids.map(() => "?").join(",");
+  db.exec({
+    sql: `UPDATE fotos SET kategorie = ? WHERE id IN (${placeholders})`,
+    bind: [kategorie, ...ids],
+  });
+  return { success: true, updated: ids.length };
+}
+
+// Nur ausgewählte Fotos MIT Vollbild exportieren (für Teilen einer Auswahl).
+async function exportFotosByIds(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const ids = Array.isArray(payload?.ids)
+    ? payload.ids.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+    : [];
+  if (!ids.length) return { items: [] };
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = [];
+  db.exec({
+    sql: `SELECT client_uuid, created_at, entry_uuid, kategorie, titel, standort,
+                 kultur, gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data
+          FROM fotos WHERE id IN (${placeholders}) ORDER BY datetime(created_at) ASC, id ASC`,
+    bind: ids,
+    rowMode: "object",
+    callback: (row) => {
+      rows.push({
+        clientUuid: row.client_uuid,
+        createdAt: row.created_at,
+        entryUuid: row.entry_uuid,
+        kategorie: row.kategorie,
+        titel: row.titel,
+        standort: row.standort,
+        kultur: row.kultur,
+        gpsLatitude: row.gps_latitude,
+        gpsLongitude: row.gps_longitude,
+        notiz: row.notiz,
+        device: row.device,
+        mime: row.mime,
+        width: row.width,
+        height: row.height,
+        bytes: row.bytes,
+        data: row.data,
       });
     },
   });

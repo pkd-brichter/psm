@@ -1,21 +1,31 @@
 /**
- * Fotos-Feature (generisch, nicht nur Kulturen): Bilder per Kamera/Datei
- * aufnehmen, komprimiert in der DB speichern, beschriften, kategorisieren,
- * mit GPS versehen, ansehen, teilen, löschen. Funktioniert auf Desktop und
- * Mobile. Mergebar über client_uuid (siehe Worker appendFoto).
+ * Fotos-Feature: moderne, langzeit-taugliche Galerie (Desktop + Mobil aus EINER
+ * Logik). Aufnehmen/kategorisieren/senden bleibt schnell; zusätzlich:
+ *  - echte Thumbnails (Galerie lädt NIE das Vollbild → kein Speicher-Explodieren)
+ *  - Datums-Gruppierung mit Abschnitts-Überschriften (Heute/Gestern/…)
+ *  - Sortier-Umschalter (neueste/älteste)
+ *  - Suche + Mehrfachauswahl + Bulk (Löschen/Teilen/Kategorie) [nur archiveMode]
+ *  - sinnvolle Titel statt UUID/"image"
+ *  - Backfill: Altbestand/Importe ohne Thumbnail werden beim Anzeigen nachgezogen
  */
 import {
   listFotos,
   appendFoto,
   getFotoData,
   deleteFoto,
+  deleteFotosByIds,
+  bulkUpdateFotoKategorie,
+  exportFotosByIds,
   updateFoto,
+  setFotoThumb,
   persistSqliteDatabaseFile,
   type FotoMeta,
 } from "@scripts/core/storage/sqlite";
 import { toast } from "@scripts/core/toast";
 import { escapeHtml } from "@scripts/core/utils";
-import { compressImage, fotoDataUrl } from "./compress";
+import { t, getLang } from "@scripts/core/i18n";
+import { zipSync, strToU8 } from "fflate";
+import { compressImage, fotoDataUrl, thumbnailFromBase64 } from "./compress";
 
 interface FotoServices {
   state?: { getState: () => any };
@@ -26,21 +36,18 @@ interface FotoServices {
 
 interface InitFotosOptions {
   compact?: boolean;
-  /** Liefert Kontext (Standort/Kultur/Eintrag) für neue Fotos. */
+  /** Archiv-Modus (Desktop): Suche + Mehrfachauswahl + Bulk-Aktionen anzeigen. */
+  archiveMode?: boolean;
   getContext?: () => {
     standort?: string | null;
     kultur?: string | null;
     entryUuid?: string | null;
     kategorie?: string | null;
   };
-  /** Wenn gesetzt, zeigt der Foto-Bereich einen eigenen „Senden"-Button (mobil). */
+  /** Mobil: eigener „Senden"-Button (ZIP ins Share-Sheet). */
   onSend?: () => void | Promise<void>;
 }
 
-/**
- * Verwendungszwecke der Fotos – betriebsweit, in Gruppen. Steuert Filter, Badge
- * und Auswahl. `group` gruppiert in Dropdown (optgroup) und Filter.
- */
 const GRUPPEN: { key: string; label: string }[] = [
   { key: "pflanzenschutz", label: "Pflanzenschutz" },
   { key: "betrieb", label: "Betrieb" },
@@ -61,7 +68,6 @@ function kategorieLabel(key: string | null | undefined): string {
   return KATEGORIEN.find((k) => k.key === key)?.label || key;
 }
 
-/** <option>-Liste mit <optgroup> pro Gruppe; markiert `selected`. */
 function buildKatOptions(selected: string | null | undefined): string {
   return GRUPPEN.map((g) => {
     const opts = KATEGORIEN.filter((k) => k.group === g.key)
@@ -69,17 +75,13 @@ function buildKatOptions(selected: string | null | undefined): string {
         (k) =>
           `<option value="${k.key}"${
             k.key === selected ? " selected" : ""
-          }>${escapeHtml(k.label)}</option>`,
+          }>${escapeHtml(t(k.label))}</option>`,
       )
       .join("");
-    return `<optgroup label="${escapeHtml(g.label)}">${opts}</optgroup>`;
+    return `<optgroup label="${escapeHtml(t(g.label))}">${opts}</optgroup>`;
   }).join("");
 }
 
-/**
- * Kategorie-Chips (EIN Steuerelement): wählen den Zweck für NEUE Fotos UND
- * filtern die Galerie. Nach Gruppen, mit „Alle"-Ansicht. Aktiver Chip = grün.
- */
 function buildFilterChips(activeKey: string): string {
   const active = (key: string) => (key === activeKey ? " is-active" : "");
   const groups = GRUPPEN.map((g) => {
@@ -87,17 +89,17 @@ function buildFilterChips(activeKey: string): string {
       .map(
         (k) =>
           `<button type="button" class="fotos-chip${active(k.key)}" data-filter="${k.key}">${escapeHtml(
-            k.label,
+            t(k.label),
           )}</button>`,
       )
       .join("");
     return `<div class="fotos-filtergroup"><span class="fotos-filtercap">${escapeHtml(
-      g.label,
+      t(g.label),
     )}</span>${chips}</div>`;
   }).join("");
   return `<button type="button" class="fotos-chip${active(
     "",
-  )}" data-filter="">Alle</button>${groups}`;
+  )}" data-filter="">${escapeHtml(t("Alle"))}</button>${groups}`;
 }
 
 function genUuid(): string {
@@ -116,25 +118,84 @@ function deviceLabel(): string {
 }
 
 const LAST_KAT_KEY = "psm-foto-last-kategorie";
+const SORT_KEY = "psm-foto-sort";
 
-function fmtWhen(iso: string): string {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** UUID/"image"/"IMG_1234" sind keine sinnvollen Titel. */
+function isUselessTitle(title: string | null | undefined): boolean {
+  const s = (title || "").trim();
+  if (!s) return true;
+  return UUID_RE.test(s) || /^image$/i.test(s) || /^IMG[_-]?\d+$/i.test(s);
+}
+
+function localeTag(): string {
+  return getLang() === "pl" ? "pl-PL" : "de-DE";
+}
+
+function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso || "";
-  return d.toLocaleString("de-DE", {
+  return d.toLocaleDateString(localeTag(), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
-/** base64 (ohne data:-Präfix) -> File für Web Share / Download. */
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtWhen(iso: string): string {
+  return `${fmtDate(iso)} ${fmtTime(iso)}`.trim();
+}
+
+/** Sprechender Anzeige-Name: echter Titel, sonst aus Kategorie/Kultur/Ort + Datum. */
+function displayName(f: FotoMeta): string {
+  if (!isUselessTitle(f.titel)) return f.titel!.trim();
+  const parts = [kategorieLabel(f.kategorie), f.kultur, f.standort]
+    .map((p) => (p || "").trim())
+    .filter(Boolean);
+  const base = parts.join(" · ") || t("Ohne Titel");
+  return `${base} · ${fmtDate(f.createdAt)}`;
+}
+
+function fmtSize(bytes: number): string {
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+/** Datums-Bucket-Schlüssel (Heute/Gestern/Diese Woche/YYYY-MM). */
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function bucketFor(iso: string): { key: string; label: string } {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { key: "unbekannt", label: "—" };
+  const today = startOfDay(new Date());
+  const day = startOfDay(d);
+  const diffDays = Math.round((today - day) / 86400000);
+  if (diffDays <= 0) return { key: "today", label: t("Heute") };
+  if (diffDays === 1) return { key: "yesterday", label: t("Gestern") };
+  if (diffDays < 7) return { key: "week", label: t("Diese Woche") };
+  const label = d.toLocaleDateString(localeTag(), { month: "long", year: "numeric" });
+  return { key: `${d.getFullYear()}-${d.getMonth()}`, label };
+}
+
 function base64ToFile(base64: string, mime: string, name: string): File {
   const bin = atob(base64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new File([bytes], name, { type: mime || "image/jpeg" });
+}
+function base64ToBytes(base64: string): Uint8Array {
+  const bin = atob(base64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 export function initFotos(
@@ -144,147 +205,251 @@ export function initFotos(
 ): void {
   if (!(container instanceof HTMLElement)) return;
   const host = container;
+  const archive = Boolean(options.archiveMode);
 
   let lastKat = "kultur";
+  let sortDir: "desc" | "asc" = "desc";
   try {
     lastKat = localStorage.getItem(LAST_KAT_KEY) || "kultur";
+    sortDir = localStorage.getItem(SORT_KEY) === "asc" ? "asc" : "desc";
   } catch {
     /* ignore */
   }
 
-  // EIN Workflow: Kategorie-Chip antippen (= Zweck für neue Fotos + Filter),
-  // dann aufnehmen, dann senden. Kein zweites Auswahl-Element mehr.
   const sendBtn = options.onSend
-    ? `<button type="button" class="fotos-send btn btn-psm-primary" data-role="fotos-send">
-         <i class="bi bi-send"></i> Senden
-       </button>`
+    ? `<button type="button" class="fotos-send btn btn-psm-primary" data-role="fotos-send"><i class="bi bi-send"></i> ${escapeHtml(
+        t("Senden"),
+      )}</button>`
+    : "";
+  const searchBox = archive
+    ? `<input type="search" class="form-control form-control-sm fotos-search" data-role="fotos-search" placeholder="${escapeHtml(
+        t("Fotos durchsuchen…"),
+      )}" />`
+    : "";
+  const selectBtn = archive
+    ? `<button type="button" class="btn btn-sm btn-psm-secondary-outline" data-role="fotos-selectmode"><i class="bi bi-check2-square"></i> ${escapeHtml(
+        t("Auswählen"),
+      )}</button>`
     : "";
 
-  // Standard: zuletzt benutzte Kategorie aktiv (klar, wohin neue Fotos gehen).
   let activeFilter = lastKat;
   let captureKat = lastKat;
+  let allItems: FotoMeta[] = [];
+  let searchQuery = "";
+  let selectMode = false;
+  const selected = new Set<number>();
 
   host.innerHTML = `
     <div class="fotos-wrap">
       <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
       <div class="fotos-bar">
         <label class="fotos-add btn btn-psm-primary">
-          <i class="bi bi-camera-fill"></i> Foto aufnehmen
+          <i class="bi bi-camera-fill"></i> ${escapeHtml(t("Foto aufnehmen"))}
           <input type="file" accept="image/*" capture="environment" hidden data-role="fotos-camera" />
         </label>
         <label class="fotos-add btn btn-psm-secondary-outline">
-          <i class="bi bi-images"></i> Aus Galerie
-          <input type="file" accept="image/*" multiple hidden data-role="fotos-gallery" />
+          <i class="bi bi-images"></i> ${escapeHtml(t("Aus Galerie"))}
+          <input type="file" accept="image/*" multiple hidden data-role="fotos-gallery-input" />
         </label>
         ${sendBtn}
         <span class="fotos-hint" data-role="fotos-status"></span>
       </div>
-      <div class="fotos-target">Neue Fotos → <b data-role="fotos-target"></b></div>
-      <div class="fotos-grid" data-role="fotos-grid"></div>
-      <div class="fotos-empty" data-role="fotos-empty">Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".</div>
+      <div class="fotos-target">${escapeHtml(t("Neue Fotos →"))} <b data-role="fotos-target"></b></div>
+      <div class="fotos-controls">
+        ${searchBox}
+        <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
+          t("Sortierung umschalten"),
+        )}"></button>
+        <span class="fotos-count" data-role="fotos-count"></span>
+        <span class="fotos-controls-spacer"></span>
+        ${selectBtn}
+      </div>
+      <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
+      <div class="fotos-gallery" data-role="fotos-gallery"></div>
+      <div class="fotos-empty" data-role="fotos-empty">${escapeHtml(
+        t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".'),
+      )}</div>
     </div>`;
 
   const cameraInput = host.querySelector<HTMLInputElement>('[data-role="fotos-camera"]');
-  const galleryInput = host.querySelector<HTMLInputElement>('[data-role="fotos-gallery"]');
+  const galleryInput = host.querySelector<HTMLInputElement>('[data-role="fotos-gallery-input"]');
   const sendButton = host.querySelector<HTMLElement>('[data-role="fotos-send"]');
   const targetEl = host.querySelector<HTMLElement>('[data-role="fotos-target"]');
-  const grid = host.querySelector<HTMLElement>('[data-role="fotos-grid"]');
+  const gallery = host.querySelector<HTMLElement>('[data-role="fotos-gallery"]');
   const emptyEl = host.querySelector<HTMLElement>('[data-role="fotos-empty"]');
   const statusEl = host.querySelector<HTMLElement>('[data-role="fotos-status"]');
   const filterBar = host.querySelector<HTMLElement>('[data-role="fotos-filter"]');
-
-  let allItems: FotoMeta[] = [];
+  const searchEl = host.querySelector<HTMLInputElement>('[data-role="fotos-search"]');
+  const sortBtn = host.querySelector<HTMLButtonElement>('[data-role="fotos-sort"]');
+  const countEl = host.querySelector<HTMLElement>('[data-role="fotos-count"]');
+  const selectModeBtn = host.querySelector<HTMLButtonElement>('[data-role="fotos-selectmode"]');
+  const bulkBar = host.querySelector<HTMLElement>('[data-role="fotos-bulkbar"]');
 
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
   };
-
   const updateTarget = () => {
     if (targetEl) targetEl.textContent = kategorieLabel(captureKat);
   };
+  const updateSortBtn = () => {
+    if (!sortBtn) return;
+    const asc = sortDir === "asc";
+    sortBtn.innerHTML = `<i class="bi ${asc ? "bi-sort-up" : "bi-sort-down"}"></i> ${escapeHtml(
+      asc ? t("Älteste zuerst") : t("Neueste zuerst"),
+    )}`;
+  };
   updateTarget();
+  updateSortBtn();
 
-  filterBar?.addEventListener("click", (event) => {
-    const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(
-      ".fotos-chip",
-    );
-    if (!btn) return;
-    activeFilter = btn.dataset.filter || "";
-    // Spezifische Kategorie = auch Ziel für neue Fotos (merken). „Alle" lässt
-    // das Ziel unverändert (man sieht es weiter in der Zeile darunter).
-    if (activeFilter) {
-      captureKat = activeFilter;
-      try {
-        localStorage.setItem(LAST_KAT_KEY, captureKat);
-      } catch {
-        /* ignore */
-      }
-      updateTarget();
-    }
-    filterBar
-      .querySelectorAll(".fotos-chip")
-      .forEach((c) => c.classList.toggle("is-active", c === btn));
-    renderGrid();
-  });
-
-  function renderGrid(): void {
-    if (!grid) return;
-    const items = activeFilter
+  // ---- Daten: filtern + sortieren + gruppieren ------------------------------
+  function getFiltered(): FotoMeta[] {
+    let items = activeFilter
       ? allItems.filter((f) => f.kategorie === activeFilter)
-      : allItems;
-    if (emptyEl) {
-      emptyEl.style.display = items.length ? "none" : "block";
-      emptyEl.textContent = allItems.length
-        ? "Keine Fotos in dieser Kategorie."
-        : 'Noch keine Fotos. Zweck wählen und „Foto aufnehmen".';
+      : allItems.slice();
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      items = items.filter((f) => {
+        const hay = [
+          f.titel,
+          f.kultur,
+          f.standort,
+          f.notiz,
+          kategorieLabel(f.kategorie),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      });
     }
-    grid.innerHTML = items
-      .map((f) => {
-        const kat = kategorieLabel(f.kategorie);
-        const sub = [f.kultur, f.standort].filter(Boolean).join(" · ");
-        return `
-        <button type="button" class="fotos-card" data-foto-id="${f.id}" title="${escapeHtml(
-          f.titel || "",
-        )}">
-          <img class="fotos-thumb" data-thumb="${f.id}" alt="${escapeHtml(f.titel || "Foto")}" />
-          ${kat ? `<span class="fotos-badge">${escapeHtml(kat)}</span>` : ""}
-          <span class="fotos-meta">
-            ${f.titel ? `<b>${escapeHtml(f.titel)}</b>` : ""}
-            <span class="fotos-meta-sub">${escapeHtml(fmtWhen(f.createdAt))}${
-              sub ? " · " + escapeHtml(sub) : ""
-            }</span>
-          </span>
-        </button>`;
-      })
-      .join("");
-    // Thumbnails lazy laden
+    const dir = sortDir === "asc" ? 1 : -1;
+    items.sort((a, b) => {
+      const ta = Date.parse(a.createdAt) || 0;
+      const tb = Date.parse(b.createdAt) || 0;
+      if (ta !== tb) return (ta - tb) * dir;
+      return (a.id - b.id) * dir;
+    });
+    return items;
+  }
+
+  function buildBuckets(items: FotoMeta[]): { key: string; label: string; items: FotoMeta[] }[] {
+    const map = new Map<string, { key: string; label: string; items: FotoMeta[] }>();
     for (const f of items) {
-      getFotoData(f.id)
-        .then((d) => {
-          if (!d?.data) return;
-          const img = grid.querySelector<HTMLImageElement>(`img[data-thumb="${f.id}"]`);
-          if (img) img.src = fotoDataUrl(d.data, d.mime);
-        })
-        .catch(() => undefined);
+      const b = bucketFor(f.createdAt);
+      if (!map.has(b.key)) map.set(b.key, { key: b.key, label: b.label, items: [] });
+      map.get(b.key)!.items.push(f);
+    }
+    return [...map.values()];
+  }
+
+  function updateCount(shown: number): void {
+    if (!countEl) return;
+    const total = allItems.length;
+    const bytes = allItems.reduce((s, f) => s + (f.bytes || 0), 0);
+    if (shown === total) {
+      countEl.textContent = `${total} ${t("Fotos")} · ${fmtSize(bytes)}`;
+    } else {
+      countEl.textContent = `${shown} / ${total} ${t("Fotos")}`;
     }
   }
 
-  async function refresh(): Promise<void> {
-    try {
-      const res = await listFotos(500);
-      allItems = res.items || [];
-    } catch (err) {
-      console.warn("[Fotos] Laden fehlgeschlagen", err);
-      allItems = [];
+  // ---- Thumbnails setzen + Backfill für fehlende (Altbestand/Importe) -------
+  // Vorhandene Thumbnails (~10 KB) werden direkt gesetzt – NIE das Vollbild.
+  // Fehlende werden gebatcht (max 3 parallel) aus dem Vollbild erzeugt und
+  // einmalig in die DB zurückgeschrieben.
+  const backfillQueue: { id: number; img: HTMLImageElement }[] = [];
+  let backfillActive = 0;
+  let backfillDirty = 0;
+
+  function pumpBackfill(): void {
+    while (backfillActive < 3 && backfillQueue.length) {
+      const job = backfillQueue.shift()!;
+      if (!job.img.isConnected) continue;
+      backfillActive += 1;
+      void (async () => {
+        try {
+          const full = await getFotoData(job.id);
+          if (full?.data) {
+            const thumb = await thumbnailFromBase64(full.data, full.mime);
+            if (job.img.isConnected) job.img.src = fotoDataUrl(thumb);
+            const item = allItems.find((f) => f.id === job.id);
+            if (item) item.thumb = thumb;
+            await setFotoThumb(job.id, thumb).catch(() => undefined);
+            backfillDirty += 1;
+            if (backfillDirty >= 8) {
+              backfillDirty = 0;
+              await persistSqliteDatabaseFile().catch(() => undefined);
+            }
+          }
+        } catch {
+          /* einzelnes Thumb ignorieren */
+        } finally {
+          backfillActive -= 1;
+          pumpBackfill();
+        }
+      })();
     }
-    renderGrid();
   }
 
+  function tileHtml(f: FotoMeta): string {
+    const kat = kategorieLabel(f.kategorie);
+    const sel = selected.has(f.id) ? " is-selected" : "";
+    return `
+      <button type="button" class="fotos-tile${sel}" data-foto-id="${f.id}" title="${escapeHtml(
+        displayName(f),
+      )}">
+        <img class="fotos-tile-img" data-thumb-id="${f.id}" alt="${escapeHtml(displayName(f))}" loading="lazy" decoding="async" />
+        ${kat ? `<span class="fotos-badge">${escapeHtml(kat)}</span>` : ""}
+        <span class="fotos-tile-time">${escapeHtml(fmtTime(f.createdAt))}</span>
+        <span class="fotos-tile-check"><i class="bi bi-check-lg"></i></span>
+      </button>`;
+  }
+
+  function renderGallery(): void {
+    if (!gallery) return;
+    const items = getFiltered();
+    updateCount(items.length);
+    if (emptyEl) {
+      const showEmpty = items.length === 0;
+      emptyEl.style.display = showEmpty ? "block" : "none";
+      emptyEl.textContent = !allItems.length
+        ? t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".')
+        : searchQuery.trim()
+          ? t("Keine Treffer für die Suche.")
+          : t("Keine Fotos in dieser Kategorie.");
+    }
+    const buckets = buildBuckets(items);
+    gallery.innerHTML = buckets
+      .map(
+        (b) => `
+        <div class="fotos-section">
+          <div class="fotos-section-head">${escapeHtml(b.label)} <span>· ${b.items.length}</span></div>
+          <div class="fotos-grid">${b.items.map(tileHtml).join("")}</div>
+        </div>`,
+      )
+      .join("");
+    // Vorhandene Thumbnails direkt setzen; fehlende zum Backfill einreihen.
+    backfillQueue.length = 0;
+    gallery
+      .querySelectorAll<HTMLImageElement>("img.fotos-tile-img")
+      .forEach((img) => {
+        const id = Number(img.dataset.thumbId);
+        const item = allItems.find((f) => f.id === id);
+        if (item?.thumb) {
+          img.src = fotoDataUrl(item.thumb);
+        } else {
+          backfillQueue.push({ id, img });
+        }
+      });
+    pumpBackfill();
+  }
+
+  // ---- Aufnahme -------------------------------------------------------------
   async function addFiles(files: FileList): Promise<void> {
     const ctx = options.getContext?.() || {};
     const kategorie = ctx.kategorie ?? captureKat ?? null;
     let ok = 0;
-    setStatus(`Verarbeite ${files.length} Foto(s) …`);
+    setStatus(`${t("Verarbeitung")} … (${files.length})`);
     for (const file of Array.from(files)) {
       if (!file.type.startsWith("image/")) continue;
       try {
@@ -294,7 +459,7 @@ export function initFotos(
           createdAt: new Date().toISOString(),
           entryUuid: ctx.entryUuid ?? null,
           kategorie,
-          titel: file.name?.replace(/\.[^.]+$/, "") || null,
+          titel: null, // sinnvoller Anzeige-Name wird abgeleitet (kein UUID-Müll)
           standort: ctx.standort ?? null,
           kultur: ctx.kultur ?? null,
           device: deviceLabel() || null,
@@ -303,6 +468,7 @@ export function initFotos(
           height: c.height,
           bytes: c.bytes,
           data: c.base64,
+          thumb: c.thumb,
         });
         ok += 1;
       } catch (err) {
@@ -312,11 +478,10 @@ export function initFotos(
     try {
       await persistSqliteDatabaseFile();
     } catch {
-      /* kein Datei-Handle (neue DB) – wird beim Speichern geschrieben */
+      /* kein Datei-Handle (neue DB) */
     }
     setStatus("");
-    if (ok) toast.success(`${ok} Foto(s) gespeichert.`);
-    // added > 0 signalisiert dem Mobile-Client „noch nicht geteilt" (Teilen-Button).
+    if (ok) toast.success(`${ok} ${t("Foto(s) gespeichert.")}`);
     window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: ok } }));
     await refresh();
   }
@@ -332,20 +497,210 @@ export function initFotos(
   };
   wireInput(cameraInput);
   wireInput(galleryInput);
+  sendButton?.addEventListener("click", () => void options.onSend?.());
 
-  // Schnell-Senden direkt aus dem Foto-Bereich (mobil) – sendet alles (ZIP).
-  sendButton?.addEventListener("click", () => {
-    void options.onSend?.();
+  // ---- Kategorie-Chips (Filter + Aufnahme-Ziel) -----------------------------
+  filterBar?.addEventListener("click", (event) => {
+    const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(".fotos-chip");
+    if (!btn) return;
+    activeFilter = btn.dataset.filter || "";
+    if (activeFilter) {
+      captureKat = activeFilter;
+      try {
+        localStorage.setItem(LAST_KAT_KEY, captureKat);
+      } catch {
+        /* ignore */
+      }
+      updateTarget();
+    }
+    filterBar
+      .querySelectorAll(".fotos-chip")
+      .forEach((c) => c.classList.toggle("is-active", c === btn));
+    renderGallery();
   });
 
-  // Karte anklicken -> Detailansicht
-  grid?.addEventListener("click", (event) => {
-    const card = (event.target as HTMLElement | null)?.closest<HTMLElement>(
-      ".fotos-card[data-foto-id]",
+  // ---- Suche + Sortierung ---------------------------------------------------
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  searchEl?.addEventListener("input", () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      searchQuery = searchEl.value || "";
+      renderGallery();
+    }, 150);
+  });
+  sortBtn?.addEventListener("click", () => {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+    try {
+      localStorage.setItem(SORT_KEY, sortDir);
+    } catch {
+      /* ignore */
+    }
+    updateSortBtn();
+    renderGallery();
+  });
+
+  // ---- Mehrfachauswahl + Bulk (nur archiveMode) -----------------------------
+  function setSelectMode(on: boolean): void {
+    selectMode = on;
+    selected.clear();
+    host.classList.toggle("fotos-selecting", on);
+    if (selectModeBtn) {
+      selectModeBtn.innerHTML = on
+        ? `<i class="bi bi-x-lg"></i> ${escapeHtml(t("Fertig"))}`
+        : `<i class="bi bi-check2-square"></i> ${escapeHtml(t("Auswählen"))}`;
+    }
+    renderBulkBar();
+    renderGallery();
+  }
+
+  function renderBulkBar(): void {
+    if (!bulkBar) return;
+    if (!selectMode) {
+      bulkBar.hidden = true;
+      bulkBar.innerHTML = "";
+      return;
+    }
+    bulkBar.hidden = false;
+    const n = selected.size;
+    const katOpts = KATEGORIEN.map(
+      (k) => `<option value="${k.key}">${escapeHtml(t(k.label))}</option>`,
+    ).join("");
+    bulkBar.innerHTML = `
+      <span class="fotos-bulk-count">${n} ${escapeHtml(t("ausgewählt"))}</span>
+      <button type="button" class="btn btn-sm btn-psm-secondary-outline" data-bulk="all"><i class="bi bi-check-all"></i> ${escapeHtml(
+        t("Alle"),
+      )}</button>
+      <select class="form-select form-select-sm fotos-bulk-kat" data-bulk="kat-select" ${
+        n ? "" : "disabled"
+      }>
+        <option value="">${escapeHtml(t("Kategorie ändern"))}</option>
+        ${katOpts}
+      </select>
+      <button type="button" class="btn btn-sm btn-psm-secondary-outline" data-bulk="share" ${
+        n ? "" : "disabled"
+      }><i class="bi bi-share"></i> ${escapeHtml(t("Teilen"))}</button>
+      <button type="button" class="btn btn-sm btn-psm-danger-outline" data-bulk="delete" ${
+        n ? "" : "disabled"
+      }><i class="bi bi-trash"></i> ${escapeHtml(t("Löschen"))}</button>`;
+  }
+
+  selectModeBtn?.addEventListener("click", () => setSelectMode(!selectMode));
+
+  bulkBar?.addEventListener("click", async (event) => {
+    const t2 = event.target as HTMLElement | null;
+    const act = t2?.closest<HTMLElement>("[data-bulk]")?.dataset.bulk;
+    if (!act) return;
+    if (act === "all") {
+      const items = getFiltered();
+      const allSel = items.every((f) => selected.has(f.id));
+      items.forEach((f) => (allSel ? selected.delete(f.id) : selected.add(f.id)));
+      renderBulkBar();
+      renderGallery();
+    } else if (act === "delete") {
+      if (!selected.size) return;
+      if (!confirm(`${selected.size} ${t("Foto(s) endgültig löschen?")}`)) return;
+      const ids = [...selected];
+      try {
+        const r = await deleteFotosByIds(ids);
+        await persistSqliteDatabaseFile().catch(() => undefined);
+        window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: 0 } }));
+        toast.info(`${r.deleted} ${t("Foto(s) gelöscht.")}`);
+        setSelectMode(false);
+        await refresh();
+      } catch (err) {
+        console.error("[Fotos] Bulk-Löschen fehlgeschlagen", err);
+        toast.error(t("Löschen fehlgeschlagen."));
+      }
+    } else if (act === "share") {
+      if (!selected.size) return;
+      await shareSelected([...selected]);
+    }
+  });
+
+  bulkBar?.addEventListener("change", async (event) => {
+    const sel = (event.target as HTMLElement | null)?.closest<HTMLSelectElement>(
+      '[data-bulk="kat-select"]',
     );
-    if (card) void openViewer(Number(card.dataset.fotoId));
+    if (!sel || !sel.value || !selected.size) return;
+    const ids = [...selected];
+    const kat = sel.value;
+    try {
+      await bulkUpdateFotoKategorie(ids, kat);
+      await persistSqliteDatabaseFile().catch(() => undefined);
+      window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: 0 } }));
+      toast.success(t("Kategorie geändert."));
+      setSelectMode(false);
+      await refresh();
+    } catch (err) {
+      console.error("[Fotos] Bulk-Kategorie fehlgeschlagen", err);
+      toast.error(t("Speichern fehlgeschlagen."));
+    }
   });
 
+  async function shareSelected(ids: number[]): Promise<void> {
+    try {
+      const fotos = (await exportFotosByIds(ids)).items || [];
+      if (!fotos.length) return;
+      const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {};
+      const metaList = fotos.map((f: any, i: number) => {
+        const name = `fotos/${(f.clientUuid || `foto-${i + 1}`).replace(/[^a-zA-Z0-9._-]/g, "_")}.jpg`;
+        if (f.data) files[name] = [base64ToBytes(String(f.data)), { level: 0 }];
+        const { data, ...rest } = f;
+        return { ...rest, file: name };
+      });
+      files["pflanzenschutz.json"] = strToU8(JSON.stringify({ fotos: metaList }, null, 2));
+      const zipped = zipSync(files);
+      const ab = zipped.buffer.slice(
+        zipped.byteOffset,
+        zipped.byteOffset + zipped.byteLength,
+      ) as ArrayBuffer;
+      const blob = new Blob([ab], { type: "application/zip" });
+      const fname = `psm-fotos-auswahl-${ids.length}.zip`;
+      const file = new File([blob], fname, { type: "application/zip" });
+      const nav = navigator as Navigator & {
+        canShare?: (d?: any) => boolean;
+        share?: (d?: any) => Promise<void>;
+      };
+      if (
+        typeof nav.share === "function" &&
+        (typeof nav.canShare !== "function" || nav.canShare({ files: [file] }))
+      ) {
+        await nav.share({ files: [file], title: "PSM-Fotos" });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch (err) {
+      if ((err as DOMException)?.name === "AbortError") return;
+      console.error("[Fotos] Auswahl teilen fehlgeschlagen", err);
+      toast.error(t("Teilen nicht möglich."));
+    }
+  }
+
+  // ---- Kachel-Klick: Auswahl umschalten ODER Detail öffnen ------------------
+  gallery?.addEventListener("click", (event) => {
+    const tile = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+      ".fotos-tile[data-foto-id]",
+    );
+    if (!tile) return;
+    const id = Number(tile.dataset.fotoId);
+    if (selectMode) {
+      if (selected.has(id)) selected.delete(id);
+      else selected.add(id);
+      tile.classList.toggle("is-selected", selected.has(id));
+      renderBulkBar();
+    } else {
+      void openViewer(id);
+    }
+  });
+
+  // ---- Detail / Lightbox ----------------------------------------------------
   async function openViewer(id: number): Promise<void> {
     const meta = allItems.find((f) => f.id === id);
     let dataUrl = "";
@@ -354,14 +709,14 @@ export function initFotos(
     try {
       const d = await getFotoData(id);
       if (!d?.data) {
-        toast.error("Foto nicht gefunden.");
+        toast.error(t("Foto nicht gefunden."));
         return;
       }
       base64 = d.data;
       mime = d.mime || "image/jpeg";
       dataUrl = fotoDataUrl(base64, mime);
     } catch {
-      toast.error("Foto konnte nicht geladen werden.");
+      toast.error(t("Foto konnte nicht geladen werden."));
       return;
     }
 
@@ -377,66 +732,76 @@ export function initFotos(
       <div class="fotos-modal-backdrop" data-act="close"></div>
       <div class="fotos-modal-sheet">
         <div class="fotos-modal-head">
-          <span><i class="bi bi-image"></i> Foto-Details</span>
-          <button type="button" class="fotos-modal-x" data-act="close" aria-label="Schließen"><i class="bi bi-x-lg"></i></button>
+          <span><i class="bi bi-image"></i> ${escapeHtml(displayName(meta || ({} as FotoMeta)))}</span>
+          <button type="button" class="fotos-modal-x" data-act="close" aria-label="${escapeHtml(
+            t("Schließen"),
+          )}"><i class="bi bi-x-lg"></i></button>
         </div>
         <div class="fotos-modal-body">
           <div class="fotos-modal-img"><img src="${dataUrl}" alt="Foto" /></div>
           <div class="fotos-modal-created">
-            <i class="bi bi-clock"></i> Erstellt am ${escapeHtml(fmtWhen(meta?.createdAt || ""))}${
+            <i class="bi bi-clock"></i> ${escapeHtml(fmtWhen(meta?.createdAt || ""))}${
               meta?.device ? " · " + escapeHtml(meta.device) : ""
             }
           </div>
           <div class="fotos-form">
             <label class="fotos-field">
-              <span>Titel / Beschreibung</span>
+              <span>${escapeHtml(t("Titel / Beschreibung"))}</span>
               <input type="text" class="form-control" data-f="titel" value="${escapeHtml(
-                meta?.titel || "",
-              )}" placeholder="z. B. Tomaten Gewächshaus 2, Reihe 4" />
+                isUselessTitle(meta?.titel) ? "" : meta?.titel || "",
+              )}" placeholder="${escapeHtml(t("z. B. Tomaten Gewächshaus 2, Reihe 4"))}" />
             </label>
             <label class="fotos-field">
-              <span>Zweck</span>
+              <span>${escapeHtml(t("Zweck"))}</span>
               <select class="form-select" data-f="kategorie">${katSelect}</select>
             </label>
             <div class="fotos-field-row">
               <label class="fotos-field">
-                <span>Kultur</span>
+                <span>${escapeHtml(t("Kultur"))}</span>
                 <input type="text" class="form-control" data-f="kultur" value="${escapeHtml(
                   meta?.kultur || "",
-                )}" placeholder="z. B. Tomate" />
+                )}" placeholder="${escapeHtml(t("z. B. Tomate"))}" />
               </label>
               <label class="fotos-field">
-                <span>Standort / Fläche</span>
+                <span>${escapeHtml(t("Standort / Fläche"))}</span>
                 <input type="text" class="form-control" data-f="standort" value="${escapeHtml(
                   meta?.standort || "",
-                )}" placeholder="z. B. GWH 2 / Acker Nord" />
+                )}" placeholder="${escapeHtml(t("z. B. GWH 2 / Acker Nord"))}" />
               </label>
             </div>
             <label class="fotos-field">
-              <span>Notiz</span>
-              <textarea class="form-control" rows="2" data-f="notiz" placeholder="Optionale Anmerkung …">${escapeHtml(
-                meta?.notiz || "",
-              )}</textarea>
+              <span>${escapeHtml(t("Notiz"))}</span>
+              <textarea class="form-control" rows="2" data-f="notiz" placeholder="${escapeHtml(
+                t("Optionale Anmerkung …"),
+              )}">${escapeHtml(meta?.notiz || "")}</textarea>
             </label>
             <div class="fotos-gps">
               <button type="button" class="btn btn-sm btn-psm-secondary-outline" data-act="gps">
-                <i class="bi bi-geo-alt"></i> Standort erfassen
+                <i class="bi bi-geo-alt"></i> ${escapeHtml(t("Standort erfassen"))}
               </button>
               <span class="fotos-gps-val" data-role="gps-val">${
                 gpsText
                   ? `<a href="https://www.openstreetmap.org/?mlat=${meta!.gpsLatitude}&mlon=${meta!.gpsLongitude}#map=17/${meta!.gpsLatitude}/${meta!.gpsLongitude}" target="_blank" rel="noopener"><i class="bi bi-pin-map"></i> ${escapeHtml(
                       gpsText,
                     )}</a>`
-                  : '<span class="text-muted">kein Standort</span>'
+                  : `<span class="text-muted">${escapeHtml(t("kein Standort"))}</span>`
               }</span>
             </div>
           </div>
         </div>
         <div class="fotos-modal-foot">
-          <button type="button" class="btn btn-psm-primary" data-act="save"><i class="bi bi-check-lg"></i> Speichern</button>
-          <button type="button" class="btn btn-psm-secondary-outline" data-act="share"><i class="bi bi-share"></i> Teilen</button>
-          <a class="btn btn-psm-secondary-outline" href="${dataUrl}" download="foto-${id}.jpg"><i class="bi bi-download"></i> Download</a>
-          <button type="button" class="btn btn-psm-danger-outline" data-act="del"><i class="bi bi-trash"></i> Löschen</button>
+          <button type="button" class="btn btn-psm-primary" data-act="save"><i class="bi bi-check-lg"></i> ${escapeHtml(
+            t("Speichern"),
+          )}</button>
+          <button type="button" class="btn btn-psm-secondary-outline" data-act="share"><i class="bi bi-share"></i> ${escapeHtml(
+            t("Teilen"),
+          )}</button>
+          <a class="btn btn-psm-secondary-outline" href="${dataUrl}" download="foto-${id}.jpg"><i class="bi bi-download"></i> ${escapeHtml(
+            t("Download"),
+          )}</a>
+          <button type="button" class="btn btn-psm-danger-outline" data-act="del"><i class="bi bi-trash"></i> ${escapeHtml(
+            t("Löschen"),
+          )}</button>
         </div>
       </div>`;
 
@@ -444,19 +809,16 @@ export function initFotos(
       modal.remove();
       document.body.classList.remove("fotos-modal-open");
     };
-
     let gpsLat = meta?.gpsLatitude ?? null;
     let gpsLng = meta?.gpsLongitude ?? null;
     const gpsValEl = modal.querySelector<HTMLElement>('[data-role="gps-val"]');
-
     const readField = (name: string): string => {
       const el = modal.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
         `[data-f="${name}"]`,
       );
       return el ? el.value.trim() : "";
     };
-
-    const saveMeta = async (silent = false): Promise<void> => {
+    const saveMeta = async (): Promise<void> => {
       try {
         await updateFoto(id, {
           titel: readField("titel") || null,
@@ -468,28 +830,28 @@ export function initFotos(
           gpsLongitude: gpsLng,
         });
         await persistSqliteDatabaseFile().catch(() => undefined);
-        window.dispatchEvent(new CustomEvent("fotos:changed"));
+        window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: 0 } }));
         await refresh();
-        if (!silent) toast.success("Foto gespeichert.");
+        toast.success(t("Foto gespeichert."));
       } catch (err) {
         console.error("[Fotos] Speichern fehlgeschlagen", err);
-        toast.error("Speichern fehlgeschlagen.");
+        toast.error(t("Speichern fehlgeschlagen."));
       }
     };
 
     modal.addEventListener("click", async (ev) => {
-      const t = ev.target as HTMLElement | null;
-      if (t?.closest('[data-act="close"]')) {
+      const tgt = ev.target as HTMLElement | null;
+      if (tgt?.closest('[data-act="close"]')) {
         close();
-      } else if (t?.closest('[data-act="save"]')) {
+      } else if (tgt?.closest('[data-act="save"]')) {
         await saveMeta();
         close();
-      } else if (t?.closest('[data-act="gps"]')) {
+      } else if (tgt?.closest('[data-act="gps"]')) {
         if (!navigator.geolocation) {
-          toast.error("Standort wird nicht unterstützt.");
+          toast.error(t("Standort wird nicht unterstützt."));
           return;
         }
-        if (gpsValEl) gpsValEl.innerHTML = "<span class='text-muted'>Erfasse …</span>";
+        if (gpsValEl) gpsValEl.innerHTML = `<span class='text-muted'>${escapeHtml(t("Erfasse …"))}</span>`;
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             gpsLat = pos.coords.latitude;
@@ -499,18 +861,17 @@ export function initFotos(
                 5,
               )}, ${gpsLng!.toFixed(5)}</a>`;
             }
-            toast.info("Standort erfasst – mit „Speichern“ sichern.");
+            toast.info(t("Standort erfasst – mit „Speichern“ sichern."));
           },
-          (err) => {
-            console.warn("[Fotos] GPS fehlgeschlagen", err);
-            toast.error("Standort konnte nicht erfasst werden.");
+          () => {
+            toast.error(t("Standort konnte nicht erfasst werden."));
             if (gpsValEl)
-              gpsValEl.innerHTML = '<span class="text-muted">kein Standort</span>';
+              gpsValEl.innerHTML = `<span class="text-muted">${escapeHtml(t("kein Standort"))}</span>`;
           },
           { enableHighAccuracy: true, timeout: 10000 },
         );
-      } else if (t?.closest('[data-act="share"]')) {
-        const titel = readField("titel") || `foto-${id}`;
+      } else if (tgt?.closest('[data-act="share"]')) {
+        const titel = readField("titel") || displayName(meta || ({} as FotoMeta)) || `foto-${id}`;
         const fname = (titel.replace(/[^a-z0-9äöü\- ]/gi, "").trim() || `foto-${id}`) + ".jpg";
         const file = base64ToFile(base64, mime, fname);
         const nav = navigator as Navigator & {
@@ -524,13 +885,9 @@ export function initFotos(
           try {
             await nav.share({ files: [file], title: titel });
           } catch (err) {
-            if ((err as DOMException)?.name !== "AbortError") {
-              console.warn("[Fotos] Teilen fehlgeschlagen", err);
-              toast.error("Teilen nicht möglich.");
-            }
+            if ((err as DOMException)?.name !== "AbortError") toast.error(t("Teilen nicht möglich."));
           }
         } else {
-          // Fallback: Download
           const a = document.createElement("a");
           a.href = dataUrl;
           a.download = fname;
@@ -538,18 +895,18 @@ export function initFotos(
           a.click();
           a.remove();
         }
-      } else if (t?.closest('[data-act="del"]')) {
-        if (!confirm("Foto wirklich löschen?")) return;
+      } else if (tgt?.closest('[data-act="del"]')) {
+        if (!confirm(t("Foto wirklich löschen?"))) return;
         try {
           await deleteFoto(id);
           await persistSqliteDatabaseFile().catch(() => undefined);
-          window.dispatchEvent(new CustomEvent("fotos:changed"));
+          window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: 0 } }));
           close();
           await refresh();
-          toast.info("Foto gelöscht.");
+          toast.info(t("Foto gelöscht."));
         } catch (err) {
           console.error("[Fotos] Löschen fehlgeschlagen", err);
-          toast.error("Löschen fehlgeschlagen.");
+          toast.error(t("Löschen fehlgeschlagen."));
         }
       }
     });
@@ -557,17 +914,37 @@ export function initFotos(
     document.body.classList.add("fotos-modal-open");
   }
 
-  // Aktualisieren, wenn anderswo (z. B. Import) Fotos hinzukommen
-  window.addEventListener("fotos:changed", () => {
-    void refresh();
-  });
+  // ---- Laden (serialisiert: verhindert Render-Race/Clobber) -----------------
+  let refreshing = false;
+  let refreshPending = false;
+  async function refresh(): Promise<void> {
+    if (refreshing) {
+      refreshPending = true;
+      return;
+    }
+    refreshing = true;
+    try {
+      const res = await listFotos(1000);
+      allItems = res.items || [];
+    } catch (err) {
+      console.warn("[Fotos] Laden fehlgeschlagen", err);
+      allItems = [];
+    }
+    renderGallery();
+    refreshing = false;
+    if (refreshPending) {
+      refreshPending = false;
+      await refresh();
+    }
+  }
 
-  // WICHTIG: Die DB ist beim Mounten oft noch NICHT verbunden (Reload, Desktop
-  // beim Öffnen einer Datei). Ohne dieses Re-Refresh bliebe die Galerie leer,
-  // obwohl Fotos in der DB liegen. Darum nach „database:connected" neu laden.
-  services.events?.subscribe?.("database:connected", () => {
-    void refresh();
+  window.addEventListener("fotos:changed", () => void refresh());
+  services.events?.subscribe?.("database:connected", () => void refresh());
+  // Sprachwechsel: t()-gebaute Texte (Zähler/Sortier-Label/Monats-Buckets) neu erzeugen.
+  window.addEventListener("i18n:changed", () => {
+    updateSortBtn();
+    updateTarget();
+    renderGallery();
   });
-
   void refresh();
 }

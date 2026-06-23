@@ -76,7 +76,7 @@ function initIndex(): void {
   const ackerContainer = document.querySelector('[data-feature="acker"]');
   initAcker(ackerContainer, services);
   const fotosContainer = document.querySelector('[data-feature="fotos"]');
-  initFotos(fotosContainer, services);
+  initFotos(fotosContainer, services, { archiveMode: true });
   // Zentraler Daten-Bereich: Import/Merge (eigener Sidebar-Bereich, nicht mehr in PSM).
   const importContainer = document.querySelector('[data-feature="import-page"]');
   initImportMerge(importContainer, {

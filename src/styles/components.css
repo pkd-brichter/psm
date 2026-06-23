@@ -1599,31 +1599,128 @@ html.qs-mode .card-dark {
   border-color: var(--color-primary);
   color: #fff;
 }
+/* Steuerleiste: Suche + Sortierung + Zähler + Auswählen */
+.fotos-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.fotos-controls-spacer { flex: 1 1 auto; }
+.fotos-search { max-width: 280px; min-width: 160px; }
+.fotos-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--surface-1);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fotos-sort:hover { border-color: var(--border-2); }
+.fotos-count { font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
+
+/* Auswahl-Aktionsleiste (sticky oben) */
+.fotos-bulkbar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+.fotos-bulk-count { font-weight: 700; color: var(--text); margin-right: 4px; }
+.fotos-bulk-kat { max-width: 200px; }
+
+/* Galerie mit Datums-Abschnitten (Block-Layout = robuste volle Breite) */
+.fotos-gallery { display: block; }
+.fotos-section { display: block; margin-bottom: 18px; }
+.fotos-section-head {
+  margin-bottom: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--surface-1);
+  padding: 4px 2px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 1px solid var(--color-border);
+}
+.fotos-section-head span { color: var(--text-muted); font-weight: 600; }
 .fotos-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
 }
-.fotos-card {
+.fotos-tile {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: block;
+  width: 100%;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;
-  background: var(--surface-1);
+  background: var(--surface-2);
   padding: 0;
   cursor: pointer;
-  text-align: left;
 }
-.fotos-card:hover { border-color: var(--border-2); }
-.fotos-thumb {
+.fotos-tile:hover { border-color: var(--border-2); }
+.fotos-tile-img {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1 / 1;
+  height: auto;
   object-fit: cover;
-  background: var(--surface-2);
   display: block;
+  background: var(--surface-2);
 }
+.fotos-tile-time {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  background: rgba(15, 23, 42, 0.62);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.fotos-tile-check {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid var(--color-border);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 0.8rem;
+}
+.fotos-selecting .fotos-tile-check { display: inline-flex; }
+.fotos-tile.is-selected { outline: 3px solid var(--color-primary); outline-offset: -3px; }
+.fotos-tile.is-selected .fotos-tile-check {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+/* Mobil: dichter gepackt, kleinere Kacheln */
+body.m-page .fotos-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+body.m-page .fotos-tile { border-radius: 6px; }
+
 .fotos-badge {
   position: absolute;
   top: 6px;

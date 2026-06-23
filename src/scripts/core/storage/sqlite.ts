@@ -855,6 +855,7 @@ export interface FotoMeta {
   width: number | null;
   height: number | null;
   bytes: number | null;
+  thumb?: string | null;
 }
 
 export interface FotoInput {
@@ -873,7 +874,8 @@ export interface FotoInput {
   width?: number;
   height?: number;
   bytes?: number;
-  data: string; // base64
+  data: string; // base64 Vollbild
+  thumb?: string; // base64 Thumbnail
 }
 
 export interface FotoPatch {
@@ -926,6 +928,45 @@ export async function updateFoto(
 export async function clearFotos(): Promise<{ success: boolean; deleted: number }> {
   if (!worker) throw new Error("Database not initialized");
   return await callWorker("clearFotos");
+}
+
+export async function setFotoThumb(
+  id: number,
+  thumb: string
+): Promise<{ success: boolean }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("setFotoThumb", { id, thumb });
+}
+
+export async function getFotoCounts(): Promise<{
+  counts: Record<string, number>;
+  total: number;
+  totalBytes: number;
+}> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("getFotoCounts");
+}
+
+export async function deleteFotosByIds(
+  ids: number[]
+): Promise<{ success: boolean; deleted: number }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("deleteFotosByIds", { ids });
+}
+
+export async function bulkUpdateFotoKategorie(
+  ids: number[],
+  kategorie: string | null
+): Promise<{ success: boolean; updated: number }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("bulkUpdateFotoKategorie", { ids, kategorie });
+}
+
+export async function exportFotosByIds(
+  ids: number[]
+): Promise<{ items: (FotoMeta & { data: string })[] }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("exportFotosByIds", { ids });
 }
 
 /**
