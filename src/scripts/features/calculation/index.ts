@@ -2005,14 +2005,13 @@ export function initCalculation(
 
   setCalcContext(initialState.calcContext as CalculationResult | null);
 
-  // Mobil: Erfassung als Schritt-für-Schritt-Wizard präsentieren (Desktop bleibt
-  // die volle Maske). Rein optische Schicht über den bestehenden Feldern.
-  if (document.body.classList.contains("m-page")) {
-    try {
-      initCalculationWizard(section);
-    } catch (err) {
-      console.warn("[PSM] Mobiler Wizard konnte nicht initialisiert werden", err);
-    }
+  // Erfassung als Schritt-für-Schritt-Wizard präsentieren – mobil UND Desktop.
+  // Rein optische Schicht über den bestehenden Feldern; Styling je Plattform
+  // (body.m-page vs. body:not(.m-page)).
+  try {
+    initCalculationWizard(section);
+  } catch (err) {
+    console.warn("[PSM] Wizard konnte nicht initialisiert werden", err);
   }
 
   initialized = true;

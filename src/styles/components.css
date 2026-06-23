@@ -1607,6 +1607,65 @@ body.m-page .calc-result-card .mt-3 .btn {
   margin: 0 !important;
 }
 
+/* ===== PSM-Wizard – Desktop-Variante (Stepper über der Maske) ===== */
+body:not(.m-page) .wiz-head { margin-bottom: var(--sp-4, 16px); }
+body:not(.m-page) .wiz-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+body:not(.m-page) .wiz-dot {
+  flex: 1 1 0;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-2, rgba(0, 0, 0, 0.15));
+  transition: background 0.15s ease;
+}
+body:not(.m-page) .wiz-dot.is-active { background: var(--primary-600, #2f855a); }
+body:not(.m-page) .wiz-dot.is-done {
+  background: var(--primary-600, #2f855a);
+  opacity: 0.55;
+}
+body:not(.m-page) .wiz-title {
+  font-size: var(--font-size-lg, 1.05rem);
+  font-weight: 700;
+  color: var(--text);
+}
+body:not(.m-page) .wiz-step .calc-fieldset { margin-bottom: 0 !important; }
+body:not(.m-page) .wiz-step .calc-fieldset + .calc-fieldset {
+  margin-top: var(--sp-5, 1.5rem);
+}
+body:not(.m-page) .wiz-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: var(--sp-5, 24px);
+}
+body:not(.m-page) .wiz-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: var(--r-md, 8px);
+  font-size: var(--font-size-base, 1rem);
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-1);
+  background: var(--surface-1);
+  color: var(--text);
+  transition: filter 0.12s ease;
+}
+body:not(.m-page) .wiz-btn-next {
+  background: var(--primary-600, #2f855a);
+  border-color: var(--primary-600, #2f855a);
+  color: #fff;
+}
+body:not(.m-page) .wiz-btn:hover { filter: brightness(1.05); }
+body:not(.m-page) .wiz-btn-next:hover { filter: brightness(0.92); }
+
 /* ===== Fotos (Galerie + Vollansicht) ===== */
 .fotos-wrap { padding: 4px 0; }
 .fotos-bar {
