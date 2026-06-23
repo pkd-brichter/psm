@@ -141,7 +141,14 @@ export function initAcker(container: Element | null, services: Services): void {
       bedMeters: fl.result?.bedMeters || 0,
       plants: fl.result?.plants || 0,
       latlngs: (fl.latlngs || []).map((a: any) => [Number(a[0]), Number(a[1])]),
-      beds: (fl.result?.beds || []).map((b: any) => ({ geo: b.geo })),
+      beds: (fl.result?.beds || []).map((b: any) => ({
+        geo: b.geo,
+        lenM: b.lenM || 0,
+        rows: b.rows || 0,
+        perRow: b.perRow || 0,
+        plants: b.plants || 0,
+        areaM2: b.areaM2 || 0,
+      })),
     };
   }
   function companyForPdf() {
@@ -529,7 +536,6 @@ export function initAcker(container: Element | null, services: Services): void {
   function setDraw(on: boolean) {
     drawing = on;
     el('[data-role="acker-banner"]')!.style.display = on ? "block" : "none";
-    (el('[data-role="acker-draw"]') as HTMLElement).style.display = on ? "none" : "block";
     map.getContainer().style.cursor = on ? "crosshair" : "";
     if (!on) {
       if (temp) map.removeLayer(temp);
@@ -537,6 +543,7 @@ export function initAcker(container: Element | null, services: Services): void {
       dots.forEach((d) => map.removeLayer(d));
       temp = null; fillTemp = null; dots = []; pts = [];
     }
+    refreshToolButtons();
     updateDrawStatus();
   }
   function undoPoint() {
@@ -561,16 +568,68 @@ export function initAcker(container: Element | null, services: Services): void {
   }
   function finishDraw() {
     if (pts.length < 3) { toast.warning("Mindestens 3 Punkte setzen."); return; }
+    const latlngs = pts.map((p) => p.slice());
+    setDraw(false);
+    createFieldFromLatlngs(latlngs);
+  }
+  // Gemeinsamer Feld-Erzeuger (Polygon UND Rechteck) – speichert sofort.
+  function createFieldFromLatlngs(latlngs: any[]) {
     const fl: any = {
       _key: "new-" + (++keySeq), id: null, name: "Fläche " + (fields.length + 1),
       kultur: null, eppoCode: null, standortId: null,
       color: palette[fields.length % palette.length],
-      latlngs: pts.map((p) => p.slice()), params: defaultsParams(),
-      outline: null, bedsLayer: null, handles: [], result: { areaM2: 0, beds: [], bedMeters: 0, plants: 0 },
+      latlngs: latlngs.map((p: any) => p.slice()), params: defaultsParams(),
+      outline: null, bedsLayer: null, handles: [], midHandles: [], result: { areaM2: 0, beds: [], bedMeters: 0, plants: 0 },
     };
-    fields.push(fl); setDraw(false); selId = fl._key;
+    fields.push(fl); selId = fl._key;
     recompute(fl);
     persistField(fl, true);
+    return fl;
+  }
+
+  // ---------- Rechteck-Werkzeug ----------
+  // Erste Ecke klicken, gegenüberliegende Ecke klicken → rechteckige Fläche.
+  // Schnell für Beete/Tunnel/typische Parzellen; voll touch-tauglich.
+  let rectMode = false; let rectStart: any = null; let rectPreview: any = null; let rectDot: any = null;
+  function refreshToolButtons() {
+    const busy = drawing || rectMode;
+    const db = el('[data-role="acker-draw"]') as HTMLElement | null;
+    const rb = el('[data-role="acker-rect"]') as HTMLElement | null;
+    if (db) db.style.display = busy ? "none" : "block";
+    if (rb) rb.style.display = busy ? "none" : "block";
+  }
+  function setRect(on: boolean) {
+    rectMode = on;
+    const banner = el('[data-role="acker-rectbanner"]');
+    if (banner) banner.style.display = on ? "block" : "none";
+    map.getContainer().style.cursor = on ? "crosshair" : "";
+    if (!on) {
+      if (rectPreview) map.removeLayer(rectPreview);
+      if (rectDot) map.removeLayer(rectDot);
+      rectPreview = null; rectDot = null; rectStart = null;
+    }
+    refreshToolButtons();
+  }
+  function rectCorners(a: any, b: any): any[] {
+    return [[a[0], a[1]], [a[0], b[1]], [b[0], b[1]], [b[0], a[1]]];
+  }
+  function onRectClick(e: any) {
+    if (!rectMode) return;
+    const p = [e.latlng.lat, e.latlng.lng];
+    if (!rectStart) {
+      rectStart = p;
+      rectDot = L.circleMarker(e.latlng, { radius: 4, color: "#22c55e", fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(map);
+    } else {
+      const corners = rectCorners(rectStart, p);
+      setRect(false);
+      createFieldFromLatlngs(corners);
+    }
+  }
+  function onRectMove(e: any) {
+    if (!rectMode || !rectStart) return;
+    const corners = rectCorners(rectStart, [e.latlng.lat, e.latlng.lng]);
+    if (!rectPreview) rectPreview = L.polygon(corners, { color: "#22c55e", weight: 2, dashArray: "5 5", fillColor: "#22c55e", fillOpacity: 0.12, interactive: false }).addTo(map);
+    else rectPreview.setLatLngs(corners);
   }
 
   // ---------- Suche (Nominatim) ----------
@@ -613,10 +672,14 @@ export function initAcker(container: Element | null, services: Services): void {
       { position: "topright" }
     ).addTo(map);
     map.on("click", onMapClick);
+    map.on("click", onRectClick);
+    map.on("mousemove", onRectMove);
     // Doppelklick schließt das Polygon ab (nur während des Zeichnens).
     map.on("dblclick", () => { if (drawing) finishDraw(); });
 
-    el('[data-role="acker-draw"]')!.addEventListener("click", () => setDraw(true));
+    el('[data-role="acker-draw"]')!.addEventListener("click", () => { setRect(false); setDraw(true); });
+    el('[data-role="acker-rect"]')?.addEventListener("click", () => { setDraw(false); setRect(true); });
+    el('[data-role="acker-rectcancel"]')?.addEventListener("click", () => setRect(false));
     el('[data-role="acker-export"]')?.addEventListener("click", exportGeoJson);
     el('[data-role="acker-export-pdf"]')?.addEventListener("click", () => void exportAllPdf());
     el('[data-role="acker-finish"]')!.addEventListener("click", finishDraw);
@@ -625,6 +688,7 @@ export function initAcker(container: Element | null, services: Services): void {
     el('[data-role="acker-go"]')!.addEventListener("click", geocode);
     (el('[data-role="acker-q"]') as HTMLInputElement).addEventListener("keydown", (e: any) => { if (e.key === "Enter") geocode(); });
     document.addEventListener("keydown", (e: any) => {
+      if (rectMode && e.key === "Escape") { setRect(false); return; }
       if (!drawing) return;
       if (e.key === "Backspace") { e.preventDefault(); undoPoint(); }
       if (e.key === "Enter") finishDraw();
@@ -679,7 +743,9 @@ function renderShell(): string {
     .acker-map{flex:1;min-height:300px}
     .acker-search{display:flex;gap:6px;margin-bottom:10px}
     .acker-search input{flex:1}
-    .acker-banner{display:none;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:var(--text);padding:10px 12px;border-radius:8px;font-size:12.5px;margin-bottom:10px;line-height:1.45}
+    .acker-tools{display:flex;gap:8px;margin-bottom:4px}
+    .acker-tools .btn{flex:1;display:inline-flex;align-items:center;justify-content:center}
+    .acker-banner{display:none;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:var(--text);padding:10px 12px;border-radius:8px;font-size:12.5px;margin:8px 0 10px;line-height:1.45}
     .acker-banner .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
     .acker-drawstat{margin-top:8px;font-weight:700;color:#16a34a;font-size:13px}
     .acker-export-cap{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted,#94a3b8);margin-bottom:6px}
@@ -721,7 +787,16 @@ function renderShell(): string {
             <input class="form-control calc-input" data-role="acker-q" placeholder="Ort suchen (z. B. Wahlwies)" />
             <button class="btn btn-psm-secondary-outline" data-role="acker-go">Suchen</button>
           </div>
-          <button class="btn btn-psm-primary" style="width:100%" data-role="acker-draw">+ Neue Fläche zeichnen</button>
+          <div class="acker-tools">
+            <button class="btn btn-psm-primary" data-role="acker-draw"><i class="bi bi-pentagon me-1"></i>Fläche zeichnen</button>
+            <button class="btn btn-psm-secondary-outline" data-role="acker-rect"><i class="bi bi-bounding-box me-1"></i>Rechteck</button>
+          </div>
+          <div class="acker-banner" data-role="acker-rectbanner">
+            <div><b>Rechteck aufziehen:</b> erste Ecke klicken/tippen, dann die gegenüberliegende Ecke.</div>
+            <div class="row">
+              <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-rectcancel">Abbrechen</button>
+            </div>
+          </div>
           <div class="acker-banner" data-role="acker-banner">
             <div><b>Fläche zeichnen:</b> auf die Karte tippen/klicken setzt die Eckpunkte. Abschließen: <b>Doppelklick</b>, Klick auf den <b>ersten Punkt</b> oder „Fertig".</div>
             <div class="acker-drawstat" data-role="acker-drawstat">Noch keine Punkte – auf die Karte tippen.</div>
