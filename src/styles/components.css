@@ -1919,6 +1919,54 @@ body:not(.m-page) .wiz-btn-next:hover { filter: brightness(0.92); }
 body.m-page .fotos-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; }
 body.m-page .fotos-tile { border-radius: 6px; }
 
+/* ===== Fotos – Desktop-Feinschliff (Struktur & Ordnung wie Foto-Apps) ===== */
+/* Aufnahme/Upload ist im Desktop-Archiv sekundär → schlanke Toolbar-Karte. */
+.fotos-wrap--desktop .fotos-capture {
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.fotos-wrap--desktop .fotos-capture-cat > span { font-size: 0.76rem; }
+.fotos-wrap--desktop .fotos-add-hero {
+  font-size: 0.92rem;
+  padding: 8px 16px;
+}
+.fotos-wrap--desktop .fotos-capture .fotos-add { padding: 8px 16px; }
+
+/* Galerie-Kopf als klar abgesetzte Toolbar-Karte. */
+.fotos-wrap--desktop .fotos-galhead:not([hidden]) {
+  display: flex;
+  background: var(--surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+.fotos-wrap--desktop .fotos-galhead-title { font-size: 1.05rem; }
+
+/* Größeres, ruhigeres Raster (mehr „Galerie"-Gefühl als die 140px-Dichte). */
+.fotos-wrap--desktop .fotos-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+.fotos-wrap--desktop .fotos-tile {
+  border-radius: 12px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.fotos-wrap--desktop .fotos-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  border-color: var(--color-primary);
+}
+.fotos-wrap--desktop .fotos-tile-time { font-size: 0.66rem; }
+
+/* Datums-Sektionen deutlicher gruppiert. */
+.fotos-wrap--desktop .fotos-section { margin-bottom: 26px; }
+.fotos-wrap--desktop .fotos-section-head {
+  font-size: 0.95rem;
+  padding: 6px 2px 8px;
+}
+
 .fotos-badge {
   position: absolute;
   top: 6px;
