@@ -1748,6 +1748,17 @@ body:not(.m-page) .wiz-btn-next:hover { filter: brightness(0.92); }
   white-space: nowrap;
 }
 .fotos-sort:hover { border-color: var(--border-2); }
+.fotos-group {
+  border: 1px solid var(--color-border);
+  background: var(--surface-1);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fotos-group:hover { border-color: var(--border-2); }
 .fotos-count { font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
 
 /* ---- Mobil: aufnahme-zuerst Oberfläche (klar getrennt von der Galerie) ---- */

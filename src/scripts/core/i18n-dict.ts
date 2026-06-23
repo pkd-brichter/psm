@@ -8,6 +8,15 @@ export const DE_PL: Record<string, string> = {
   // unten im Wörterbuch vorhanden)
   "Schritt": "Krok",
   "Anwendung & QS": "Zastosowanie i QS",
+  // Fotos: Gruppieren
+  "Gruppieren nach": "Grupuj według",
+  "Nach Datum": "Według daty",
+  "Nach Standort": "Według lokalizacji",
+  "Nach Kultur": "Według uprawy",
+  "Nach Zweck": "Według celu",
+  "Ohne Standort": "Bez lokalizacji",
+  "Ohne Kultur": "Bez uprawy",
+  "Ohne Zweck": "Bez celu",
   "Übersicht & Speichern": "Przegląd i zapis",
   "Bitte Ihren Namen eintragen.": "Proszę podać imię i nazwisko.",
   "Bitte die Fläche in Hektar eintragen.": "Proszę podać powierzchnię w hektarach.",

@@ -127,6 +127,8 @@ function deviceLabel(): string {
 
 const LAST_KAT_KEY = "psm-foto-last-kategorie";
 const SORT_KEY = "psm-foto-sort";
+const GROUP_KEY = "psm-foto-group";
+type GroupBy = "datum" | "standort" | "kultur" | "kategorie";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** UUID/"image"/"IMG_1234" sind keine sinnvollen Titel. */
@@ -218,9 +220,14 @@ export function initFotos(
 
   let lastKat = "kultur";
   let sortDir: "desc" | "asc" = "desc";
+  let groupBy: GroupBy = "datum";
   try {
     lastKat = localStorage.getItem(LAST_KAT_KEY) || "kultur";
     sortDir = localStorage.getItem(SORT_KEY) === "asc" ? "asc" : "desc";
+    const g = localStorage.getItem(GROUP_KEY);
+    if (g === "standort" || g === "kultur" || g === "kategorie" || g === "datum") {
+      groupBy = g;
+    }
   } catch {
     /* ignore */
   }
@@ -234,6 +241,18 @@ export function initFotos(
     ? `<button type="button" class="btn btn-sm btn-psm-secondary-outline" data-role="fotos-selectmode"><i class="bi bi-check2-square"></i> ${escapeHtml(
         t("Auswählen"),
       )}</button>`
+    : "";
+  // Gruppieren nach Datum / Standort / Kultur / Zweck – gibt der Galerie Struktur
+  // (statt einer reinen Foto-Halde). Nur im Archiv-/Desktop-Modus.
+  const groupSelect = archive
+    ? `<select class="fotos-group" data-role="fotos-group" title="${escapeHtml(
+        t("Gruppieren nach"),
+      )}" aria-label="${escapeHtml(t("Gruppieren nach"))}">
+        <option value="datum">${escapeHtml(t("Nach Datum"))}</option>
+        <option value="standort">${escapeHtml(t("Nach Standort"))}</option>
+        <option value="kultur">${escapeHtml(t("Nach Kultur"))}</option>
+        <option value="kategorie">${escapeHtml(t("Nach Zweck"))}</option>
+      </select>`
     : "";
 
   // Anzeige-Filter startet auf „Alle" (voller Bestand sichtbar); das Aufnahme-Ziel
@@ -292,6 +311,7 @@ export function initFotos(
         <span class="fotos-count" data-role="fotos-count"></span>
         <span class="fotos-controls-spacer"></span>
         ${searchBox}
+        ${groupSelect}
         <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
           t("Sortierung umschalten"),
         )}"></button>
@@ -373,12 +393,53 @@ export function initFotos(
 
   function buildBuckets(items: FotoMeta[]): { key: string; label: string; items: FotoMeta[] }[] {
     const map = new Map<string, { key: string; label: string; items: FotoMeta[] }>();
-    for (const f of items) {
-      const b = bucketFor(f.createdAt);
-      if (!map.has(b.key)) map.set(b.key, { key: b.key, label: b.label, items: [] });
-      map.get(b.key)!.items.push(f);
+    // Datum: chronologische Buckets (Heute/Gestern/…), Reihenfolge = Sortierung.
+    if (groupBy === "datum") {
+      for (const f of items) {
+        const b = bucketFor(f.createdAt);
+        if (!map.has(b.key)) map.set(b.key, { key: b.key, label: b.label, items: [] });
+        map.get(b.key)!.items.push(f);
+      }
+      return [...map.values()];
     }
-    return [...map.values()];
+    // Standort / Kultur / Zweck: nach dem jeweiligen Feld gruppieren.
+    const emptyLabel =
+      groupBy === "standort"
+        ? t("Ohne Standort")
+        : groupBy === "kultur"
+          ? t("Ohne Kultur")
+          : t("Ohne Zweck");
+    const valOf = (f: FotoMeta): string =>
+      groupBy === "standort"
+        ? (f.standort || "").trim()
+        : groupBy === "kultur"
+          ? (f.kultur || "").trim()
+          : kategorieLabel(f.kategorie);
+    for (const f of items) {
+      const v = valOf(f);
+      const key = v || "__none__";
+      if (!map.has(key)) map.set(key, { key, label: v || emptyLabel, items: [] });
+      map.get(key)!.items.push(f);
+    }
+    // Benannte Gruppen alphabetisch, „Ohne …" ans Ende.
+    return [...map.values()].sort((a, b) => {
+      if (a.key === "__none__") return 1;
+      if (b.key === "__none__") return -1;
+      return a.label.localeCompare(b.label, localeTag());
+    });
+  }
+
+  function sectionIcon(): string {
+    switch (groupBy) {
+      case "standort":
+        return "bi-geo-alt";
+      case "kultur":
+        return "bi-flower1";
+      case "kategorie":
+        return "bi-tag";
+      default:
+        return "bi-calendar3";
+    }
   }
 
   function updateCount(shown: number): void {
@@ -525,7 +586,9 @@ export function initFotos(
         .map(
           (b) => `
         <div class="fotos-section">
-          <div class="fotos-section-head">${escapeHtml(b.label)} <span>· ${b.items.length}</span></div>
+          <div class="fotos-section-head"><i class="bi ${sectionIcon()}"></i> ${escapeHtml(
+            b.label,
+          )} <span>· ${b.items.length}</span></div>
           <div class="fotos-grid">${b.items.map(tileHtml).join("")}</div>
         </div>`,
         )
@@ -646,6 +709,18 @@ export function initFotos(
       /* ignore */
     }
     updateSortBtn();
+    renderLimit = 150;
+    renderGallery();
+  });
+  const groupSel = host.querySelector<HTMLSelectElement>('[data-role="fotos-group"]');
+  if (groupSel) groupSel.value = groupBy;
+  groupSel?.addEventListener("change", () => {
+    groupBy = (groupSel.value as GroupBy) || "datum";
+    try {
+      localStorage.setItem(GROUP_KEY, groupBy);
+    } catch {
+      /* ignore */
+    }
     renderLimit = 150;
     renderGallery();
   });
