@@ -1,0 +1,77 @@
+{
+  "name": "Digitale PSM - Pflanzenschutz-Dokumentation",
+  "short_name": "DigitalePSM",
+  "description": "Digitale Berechnung, Dokumentation und Verwaltung von Pflanzenschutzmittel-Anwendungen mit offiziellen BVL-Daten.",
+  "start_url": "/psm/?source=pwa",
+  "scope": "/psm/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#22c55e",
+  "background_color": "#1a1a2e",
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "de",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/psm/assets/img/psm-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/psm/assets/img/psm-icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/psm/assets/img/psm-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/psm/assets/img/psm-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/psm/assets/img/psm-icon-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/psm/assets/img/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Digitale PSM Startseite"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/psm/",
+      "accept": {
+        "application/x-sqlite3": [".sqlite", ".db"],
+        "application/json": [".json"]
+      }
+    }
+  ],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "handle_links": "preferred",
+  "protocol_handlers": [
+    {
+      "protocol": "web+psm",
+      "url": "/psm/?protocol=%s"
+    }
+  ],
+  "prefer_related_applications": false,
+  "id": "digitale-psm"
+}
