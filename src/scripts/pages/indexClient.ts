@@ -12,6 +12,7 @@ import { initLager } from "@scripts/features/lager";
 import { initAcker } from "@scripts/features/acker";
 import { initFotos } from "@scripts/features/fotos";
 import { initImportMerge } from "@scripts/features/importMerge";
+import { initI18n } from "@scripts/core/i18n";
 import { initDashboard } from "@scripts/features/dashboard";
 import { initToastContainer } from "@scripts/core/toast";
 import type { AppState } from "@scripts/core/state";
@@ -34,6 +35,8 @@ function switchToSection(section: AppState["app"]["activeSection"]): void {
 }
 
 function initIndex(): void {
+  // Zweisprachigkeit (DE/PL) – früh, damit alles ab Start übersetzt wird.
+  initI18n();
   // Initialize Toast notification system
   initToastContainer();
 

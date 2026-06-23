@@ -245,6 +245,13 @@ export function initStartup(
     <div class="section-inner">
       <div class="card startup-card" style="position: relative;">
         <div class="card-body text-center py-5">
+          <!-- Sprachumschalter oben rechts -->
+          <div style="position: absolute; top: 0.75rem; right: 0.75rem;">
+            <div class="lang-switch" data-role="lang-switch" role="group" aria-label="Sprache / Język">
+              <button type="button" class="lang-btn" data-lang="de" title="Deutsch">DE</button>
+              <button type="button" class="lang-btn" data-lang="pl" title="Polski">PL</button>
+            </div>
+          </div>
           <!-- Branding Logo oben links -->
           <div style="position: absolute; top: 0.75rem; left: 0.75rem;">
             <div class="d-flex align-items-center gap-2">

@@ -7,7 +7,13 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     <header class="m-header no-print">
       <div class="m-top">
         <span class="m-brand"><i class="bi bi-flower1"></i> PSM <small>mobil</small></span>
-        <a class="m-desktop-link" href="../">Desktop &rarr;</a>
+        <div class="m-top-right">
+          <div class="lang-switch" data-role="lang-switch" role="group" aria-label="Sprache / Język">
+            <button type="button" class="lang-btn" data-lang="de" title="Deutsch">DE</button>
+            <button type="button" class="lang-btn" data-lang="pl" title="Polski">PL</button>
+          </div>
+          <a class="m-desktop-link" href="../">Desktop &rarr;</a>
+        </div>
       </div>
       <div class="m-share-bar" data-role="m-share-status"></div>
     </header>

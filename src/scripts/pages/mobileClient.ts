@@ -25,6 +25,7 @@ import {
   subscribeState,
 } from "@scripts/core/state";
 import { emit, subscribe as subscribeEvent } from "@scripts/core/eventBus";
+import { initI18n } from "@scripts/core/i18n";
 import { initToastContainer, toast } from "@scripts/core/toast";
 import { initCalculation } from "@scripts/features/calculation";
 import { shareMobileData, getDeviceLabel } from "@scripts/features/share";
@@ -375,6 +376,7 @@ async function start(): Promise<void> {
   started = true;
 
   document.body.classList.add("mobile-mode", "m-page", "bg-app");
+  initI18n();
   initToastContainer();
   initAddToHomeBanner();
   await loadDefaultsConfig();
