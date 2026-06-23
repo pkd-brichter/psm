@@ -85,23 +85,58 @@ erscheinen oben im **Header** als Reiter. Definition: `src/scripts/components/sh
 - Mobiler **Teilen-Status**: „X bereit zum Teilen" / „Nichts zu teilen" (Teilen nur aktiv, wenn etwas offen ist).
   **Nach erfolgreichem Senden werden die Fotos vom Handy entfernt** (Mobil = Wegwerf-Client; Erfassungen bleiben).
 
+## 🗺️ Acker-Planer (`features/acker/`)
+
+Freiland-Flächen auf einer **Satelliten-/OSM-Karte** (Leaflet + Turf, **lazy** geladen) aufzeichnen und
+daraus **Beete + Pflanzbedarf** berechnen. Persistenz: Tabelle `ackerflaechen` (SQLite).
+
+- **Zeichnen – zwei Werkzeuge:**
+  - **Fläche zeichnen** (Polygon): Eckpunkte auf die Karte tippen. Abschließen per **Doppelklick**,
+    **Klick auf den ersten Punkt** oder **„Fertig"**.
+  - **Rechteck**: erste Ecke → gegenüberliegende Ecke (2 Klicks).
+- **Geführtes Zeichnen (touch-tauglich):** ein **On-Map-Overlay** oben auf der Karte zeigt live, was zu tun
+  ist (z. B. „noch X Ecken", Punktzahl, provisorische Fläche/Umfang) + große Buttons **Fertig / Zurück /
+  Abbrechen**. Tastatur-Kürzel zusätzlich: Backspace = Punkt zurück, Enter = fertig, Escape = abbrechen.
+- **Rechtsklick-Kontextmenü** (eigenes, Browser-Menü unterdrückt):
+  - leere Karte → „Fläche hier zeichnen" / „Rechteck hier beginnen"
+  - beim Zeichnen → Punkt hinzufügen / abschließen / letzten Punkt entfernen / abbrechen
+  - auf einer Fläche → bearbeiten / als PDF / löschen
+- **Editieren** der ausgewählten Fläche: Eckpunkt **ziehen** (verschieben), **„+" auf der Kante** (Punkt
+  einfügen), **Doppel-/Rechtsklick** auf einen Eckpunkt (löschen, min. 3).
+- **Berechnung** (`computeBeds`, Turf): Fläche (m²/ha), **Beete**, **Beetmeter**, **Pflanzenbedarf** aus den
+  Parametern *Bettbreite · Wegbreite · Reihenabstand · Pflanzabstand · Ausrichtung*; Summen über alle Flächen.
+- **Standorte** aus GPS-Punkten als Marker-Layer; **Ortssuche** via Nominatim.
+- **Export:**
+  - **PDF** (`features/acker/pdf.ts`, jsPDF lazy): pro Fläche **„PDF-Export"** bzw. **„Auswertung als PDF
+    (alle Flächen)"** – Firmenkopf, Kennzahlen + Anbauparameter und eine **maßstäbliche Vektor-Skizze**
+    (Umriss + Beet-Streifen; druckt scharf, unabhängig von Karten-Kacheln/CORS). Ausgabe via Web-Share-Sheet,
+    Fallback Download.
+  - **GeoJSON** (WGS84/CRS84): Flächen + Standorte für QGIS / FMIS / Traktor-Terminals.
+
 ## 📷 Fotos (`features/fotos/`)
 
 Betriebsweites Foto-/Beleg-Werkzeug (nicht nur Pflanzenschutz). EINE Galerie-Logik für Desktop+Mobil,
-`archiveMode` (Desktop) schaltet Suche/Mehrfachauswahl frei; Mobil bleibt schlank.
+`archiveMode` (Desktop) schaltet Suche/Gruppieren/Mehrfachauswahl frei; Mobil bleibt schlank.
 
-- **Kategorien in Gruppen** (`KATEGORIEN`): *Pflanzenschutz* (Kultur-Doku · Flächennutzungs-Nachweis · Schaden) ·
-  *Betrieb* (Werkstatt & Fahrzeuge · Werkzeuge & Geräte · Ersatzteile/Material · Lieferung/Wareneingang · Sonstiges).
-  Chips = **Filter UND Aufnahme-Ziel** zugleich; Zeile „Neue Fotos → <Kategorie>".
-- **Aufnahme:** „Foto aufnehmen" (Kamera) / „Aus Galerie" (mehrere); `compress.ts` erzeugt **Vollbild**
-  (max 1500px, adaptiv ~≤360 KB) **und Thumbnail** `data_thumb` (~240px, ~10 KB).
-- **Galerie:** Datums-Gruppen (Heute/Gestern/Diese Woche/Monat), Sortier-Umschalter, Zähler + Chip-Counts,
-  inkrementelles Rendern + `content-visibility`. **Galerie nutzt nur Thumbnails**, Vollbild nur in der
-  Lightbox (`getFotoData`). Altbestand/Importe ohne Thumb → **Backfill** beim Anzeigen.
+- **Kategorien in Gruppen** (`KATEGORIEN`, je mit Icon): *Pflanzenschutz* (Kultur-Doku · Flächennutzungs-Nachweis ·
+  Schaden/Krankheit) · *Betrieb* (Werkstatt & Fahrzeuge · Werkzeuge & Geräte · Ersatzteile/Material ·
+  Lieferung/Wareneingang · Sonstiges).
+- **Desktop-Layout (3 Zonen):** ein **eigener Fotos-Header** oben über volle Breite (links Aufnahme:
+  Kategorie-Auswahl + „Foto aufnehmen"/„Aus Galerie"; rechts Werkzeuge: Suche · Gruppieren · Sortieren ·
+  Auswählen), links eine **schmale Kategorie-Rail** (Alle Fotos + Gruppen, je mit Live-Zähler), rechts die
+  große Galerie. Kategorie-Klick = **Galerie-Filter UND Aufnahme-Ziel** in einem (eine Quelle der Wahrheit
+  für Rail/Chips). Mobil: schlanke aufnahme-zuerst Ansicht mit scrollbaren Filter-Chips.
+- **Gruppieren** (Desktop) nach **Datum · Standort · Kultur · Zweck** (Abschnitts-Überschriften mit Icon + Anzahl);
+  Datum-Buckets Heute/Gestern/Diese Woche/Monat. Auswahl persistiert (`localStorage`).
+- **Aufnahme:** Kamera / „Aus Galerie" (mehrere); `compress.ts` erzeugt **Vollbild** (max 1500px, adaptiv
+  ~≤360 KB) **und Thumbnail** `data_thumb` (~240px, ~10 KB).
+- **Galerie nutzt nur Thumbnails**, Vollbild nur in der Lightbox (`getFotoData`); inkrementelles Rendern +
+  `content-visibility`. Altbestand/Importe ohne Thumb → **Backfill** beim Anzeigen.
 - **Titel** werden abgeleitet (`displayName`: Kategorie·Kultur·Standort·Datum) statt UUID/„image".
-- **Bulk (Desktop):** Mehrfachauswahl → löschen / als ZIP teilen / Kategorie ändern.
+- **Bulk (Desktop):** Mehrfachauswahl → **löschen** / **als ZIP teilen** / **Kategorie ändern** /
+  **Standort + Kultur zuweisen** (in einem Rutsch, `bulkUpdateFotos`) – zum schnellen Nach-Einordnen von Altbestand.
 - Worker: `appendFoto/listFotos/getFotoData/updateFoto/deleteFoto/clearFotos/setFotoThumb/getFotoCounts/`
-  `deleteFotosByIds/bulkUpdateFotoKategorie/exportFotos/exportFotosByIds` · Merge per `clientUuid`.
+  `deleteFotosByIds/bulkUpdateFotoKategorie/bulkUpdateFotos/exportFotos/exportFotosByIds` · Merge per `clientUuid`.
 
 ## 🌐 Zweisprachigkeit DE/PL (`core/i18n.ts` + `core/i18n-dict.ts`)
 
