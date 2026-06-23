@@ -76,13 +76,17 @@ function buildKatOptions(selected: string | null | undefined): string {
   }).join("");
 }
 
-/** Filter-Chips, nach Gruppen mit kleiner Überschrift. */
-function buildFilterChips(): string {
+/**
+ * Kategorie-Chips (EIN Steuerelement): wählen den Zweck für NEUE Fotos UND
+ * filtern die Galerie. Nach Gruppen, mit „Alle"-Ansicht. Aktiver Chip = grün.
+ */
+function buildFilterChips(activeKey: string): string {
+  const active = (key: string) => (key === activeKey ? " is-active" : "");
   const groups = GRUPPEN.map((g) => {
     const chips = KATEGORIEN.filter((k) => k.group === g.key)
       .map(
         (k) =>
-          `<button type="button" class="fotos-chip" data-filter="${k.key}">${escapeHtml(
+          `<button type="button" class="fotos-chip${active(k.key)}" data-filter="${k.key}">${escapeHtml(
             k.label,
           )}</button>`,
       )
@@ -91,7 +95,9 @@ function buildFilterChips(): string {
       g.label,
     )}</span>${chips}</div>`;
   }).join("");
-  return `<button type="button" class="fotos-chip is-active" data-filter="">Alle</button>${groups}`;
+  return `<button type="button" class="fotos-chip${active(
+    "",
+  )}" data-filter="">Alle</button>${groups}`;
 }
 
 function genUuid(): string {
@@ -146,23 +152,22 @@ export function initFotos(
     /* ignore */
   }
 
-  const katOptions = buildKatOptions(lastKat);
-
-  // Schnell-Workflow: zuerst Zweck wählen, dann aufnehmen. Kamera = ein
-  // schneller Schnappschuss; Galerie = mehrere Bilder auf einmal auswählen.
+  // EIN Workflow: Kategorie-Chip antippen (= Zweck für neue Fotos + Filter),
+  // dann aufnehmen, dann senden. Kein zweites Auswahl-Element mehr.
   const sendBtn = options.onSend
     ? `<button type="button" class="fotos-send btn btn-psm-primary" data-role="fotos-send">
          <i class="bi bi-send"></i> Senden
        </button>`
     : "";
 
+  // Standard: zuletzt benutzte Kategorie aktiv (klar, wohin neue Fotos gehen).
+  let activeFilter = lastKat;
+  let captureKat = lastKat;
+
   host.innerHTML = `
     <div class="fotos-wrap">
+      <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
       <div class="fotos-bar">
-        <label class="fotos-katpick">
-          <span>Zweck</span>
-          <select class="form-select" data-role="fotos-newkat">${katOptions}</select>
-        </label>
         <label class="fotos-add btn btn-psm-primary">
           <i class="bi bi-camera-fill"></i> Foto aufnehmen
           <input type="file" accept="image/*" capture="environment" hidden data-role="fotos-camera" />
@@ -174,34 +179,30 @@ export function initFotos(
         ${sendBtn}
         <span class="fotos-hint" data-role="fotos-status"></span>
       </div>
-      <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips()}</div>
+      <div class="fotos-target">Neue Fotos → <b data-role="fotos-target"></b></div>
       <div class="fotos-grid" data-role="fotos-grid"></div>
-      <div class="fotos-empty" data-role="fotos-empty">Noch keine Fotos. Zweck wählen und „Foto aufnehmen".</div>
+      <div class="fotos-empty" data-role="fotos-empty">Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".</div>
     </div>`;
 
   const cameraInput = host.querySelector<HTMLInputElement>('[data-role="fotos-camera"]');
   const galleryInput = host.querySelector<HTMLInputElement>('[data-role="fotos-gallery"]');
   const sendButton = host.querySelector<HTMLElement>('[data-role="fotos-send"]');
-  const newKatSel = host.querySelector<HTMLSelectElement>('[data-role="fotos-newkat"]');
+  const targetEl = host.querySelector<HTMLElement>('[data-role="fotos-target"]');
   const grid = host.querySelector<HTMLElement>('[data-role="fotos-grid"]');
   const emptyEl = host.querySelector<HTMLElement>('[data-role="fotos-empty"]');
   const statusEl = host.querySelector<HTMLElement>('[data-role="fotos-status"]');
   const filterBar = host.querySelector<HTMLElement>('[data-role="fotos-filter"]');
 
-  let activeFilter = "";
   let allItems: FotoMeta[] = [];
 
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
   };
 
-  newKatSel?.addEventListener("change", () => {
-    try {
-      localStorage.setItem(LAST_KAT_KEY, newKatSel.value);
-    } catch {
-      /* ignore */
-    }
-  });
+  const updateTarget = () => {
+    if (targetEl) targetEl.textContent = kategorieLabel(captureKat);
+  };
+  updateTarget();
 
   filterBar?.addEventListener("click", (event) => {
     const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(
@@ -209,6 +210,17 @@ export function initFotos(
     );
     if (!btn) return;
     activeFilter = btn.dataset.filter || "";
+    // Spezifische Kategorie = auch Ziel für neue Fotos (merken). „Alle" lässt
+    // das Ziel unverändert (man sieht es weiter in der Zeile darunter).
+    if (activeFilter) {
+      captureKat = activeFilter;
+      try {
+        localStorage.setItem(LAST_KAT_KEY, captureKat);
+      } catch {
+        /* ignore */
+      }
+      updateTarget();
+    }
     filterBar
       .querySelectorAll(".fotos-chip")
       .forEach((c) => c.classList.toggle("is-active", c === btn));
@@ -270,7 +282,7 @@ export function initFotos(
 
   async function addFiles(files: FileList): Promise<void> {
     const ctx = options.getContext?.() || {};
-    const kategorie = ctx.kategorie ?? newKatSel?.value ?? null;
+    const kategorie = ctx.kategorie ?? captureKat ?? null;
     let ok = 0;
     setStatus(`Verarbeite ${files.length} Foto(s) …`);
     for (const file of Array.from(files)) {

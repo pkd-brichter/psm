@@ -1964,6 +1964,9 @@ self.onmessage = async function (event) {
       case "updateFoto":
         result = await updateFoto(payload);
         break;
+      case "clearFotos":
+        result = await clearFotos();
+        break;
       case "deleteArchiveLog":
         result = await deleteArchiveLog(payload);
         break;
@@ -4414,6 +4417,15 @@ async function deleteFoto(payload = {}) {
   stmt.bind([id]).step();
   stmt.finalize();
   return { success: true };
+}
+
+// Alle Fotos löschen (mobil nach dem Senden – nichts auf dem Gerät lassen).
+async function clearFotos() {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const count = db.selectValue("SELECT COUNT(*) FROM fotos") || 0;
+  db.exec("DELETE FROM fotos");
+  return { success: true, deleted: Number(count) };
 }
 
 async function deleteArchiveLog(payload = {}) {

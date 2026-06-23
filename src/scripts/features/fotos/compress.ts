@@ -29,10 +29,20 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// Ziel: kleine, aber erkennbare Bilder. Detailreiche Pflanzen-/Grasfotos
+// werden bei fester Qualität sonst 0,6–0,9 MB groß. Darum ADAPTIV: zuerst
+// verkleinern, dann Qualität schrittweise senken, bis unter dem Deckel.
+const TARGET_BYTES = 360 * 1024; // ~360 KB Obergrenze pro Foto
+const QUALITY_STEPS = [0.7, 0.6, 0.5, 0.42, 0.35];
+
+function canvasBytes(canvas: HTMLCanvasElement, quality: number): string {
+  const outUrl = canvas.toDataURL("image/jpeg", quality);
+  return outUrl.split(",")[1] || "";
+}
+
 export async function compressImage(
   file: File,
-  maxDim = 1600,
-  quality = 0.72,
+  maxDim = 1500,
 ): Promise<CompressedImage> {
   const dataUrl = await readAsDataUrl(file);
   const img = await loadImage(dataUrl);
@@ -52,8 +62,14 @@ export async function compressImage(
     throw new Error("Canvas-Kontext nicht verfügbar");
   }
   ctx.drawImage(img, 0, 0, width, height);
-  const outUrl = canvas.toDataURL("image/jpeg", quality);
-  const base64 = outUrl.split(",")[1] || "";
+
+  // Qualität senken, bis das Bild klein genug ist (oder Minimum erreicht).
+  let base64 = "";
+  for (const q of QUALITY_STEPS) {
+    base64 = canvasBytes(canvas, q);
+    const size = Math.round((base64.length * 3) / 4);
+    if (size <= TARGET_BYTES) break;
+  }
   const bytes = Math.round((base64.length * 3) / 4);
   return { base64, mime: "image/jpeg", width, height, bytes };
 }

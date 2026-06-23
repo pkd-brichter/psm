@@ -4,6 +4,8 @@
  * Generiert/zusammengeführt – Ergänzungen: einfach weitere Zeilen hinzufügen.
  */
 export const DE_PL: Record<string, string> = {
+  "Neue Fotos →": "Nowe zdjęcia →",
+  "Noch keine Fotos. Kategorie wählen und „Foto aufnehmen\".": "Brak zdjęć. Wybierz kategorię i „Zrób zdjęcie\".",
   "– Kultur –": "– Uprawa –",
   "– Standort –": "– Lokalizacja –",
   "(aktiv)": "(aktywna)",

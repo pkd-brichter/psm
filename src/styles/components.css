@@ -1572,6 +1572,8 @@ html.qs-mode .card-dark {
 .fotos-katpick { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted); margin: 0; }
 .fotos-katpick select { min-width: 200px; }
 .fotos-send { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.fotos-target { font-size: 0.82rem; color: var(--text-muted); margin: 0 0 12px; }
+.fotos-target b { color: var(--color-primary); font-weight: 700; }
 .fotos-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 14px; }
 .fotos-filtergroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .fotos-filtercap {

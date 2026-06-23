@@ -923,6 +923,11 @@ export async function updateFoto(
   return await callWorker("updateFoto", { id, ...patch });
 }
 
+export async function clearFotos(): Promise<{ success: boolean; deleted: number }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("clearFotos");
+}
+
 /**
  * Lookup helpers (EPPO / BBCH)
  */

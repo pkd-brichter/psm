@@ -10,10 +10,35 @@
  * Fallback ohne Web Share API: klassischer Download.
  */
 
-import { exportSnapshot, exportFotos } from "@scripts/core/storage/sqlite";
+import {
+  exportSnapshot,
+  exportFotos,
+  clearFotos,
+  persistSqliteDatabaseFile,
+} from "@scripts/core/storage/sqlite";
 import { toast } from "@scripts/core/toast";
 import { setUnsharedCount } from "./unshared";
 import { zipSync, strToU8 } from "fflate";
+
+/**
+ * Nach erfolgreichem Senden: Fotos vom Gerät entfernen (mobil = reiner
+ * Erfassungs-/Weitergabe-Client, „nichts hinterlassen" → kein Speicher-Ballast).
+ * Die Erfassungen (Text) bleiben für die PDF-Ansicht erhalten.
+ */
+async function clearFotosAfterSend(): Promise<void> {
+  try {
+    const res = await clearFotos();
+    await persistSqliteDatabaseFile().catch(() => undefined);
+    window.dispatchEvent(
+      new CustomEvent("fotos:changed", { detail: { added: 0 } }),
+    );
+    if (res?.deleted) {
+      toast.info(`${res.deleted} Foto(s) gesendet und vom Gerät entfernt.`);
+    }
+  } catch (err) {
+    console.warn("[Share] Fotos konnten nach dem Senden nicht entfernt werden", err);
+  }
+}
 
 /** base64 (ohne data:-Präfix) -> rohe Bytes für echte Bilddatei im ZIP. */
 function base64ToBytes(base64: string): Uint8Array {
@@ -125,6 +150,7 @@ export async function shareMobileData(): Promise<void> {
         text: "Pflanzenschutz-Erfassung (ZIP inkl. Fotos) – am Desktop über Import/Merge einspielen.",
       });
       setUnsharedCount(0);
+      await clearFotosAfterSend();
       return;
     } catch (err) {
       // Abbruch durch Nutzer ist kein Fehler.
@@ -147,6 +173,7 @@ export async function shareMobileData(): Promise<void> {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setUnsharedCount(0);
     toast.info("Datei wurde heruntergeladen.");
+    await clearFotosAfterSend();
   } catch (err) {
     console.error("[Share] Download fehlgeschlagen", err);
     toast.error("Teilen wird auf diesem Gerät nicht unterstützt.");
