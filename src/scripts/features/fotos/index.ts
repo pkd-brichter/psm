@@ -252,14 +252,18 @@ export function initFotos(
   const selected = new Set<number>();
   const GALLERY_LOAD_CAP = 5000;
 
-  const cameraLabel = `<label class="fotos-add fotos-add-hero btn btn-psm-primary">
-          <i class="bi bi-camera-fill"></i> ${escapeHtml(t("Foto aufnehmen"))}
-          <input type="file" accept="image/*" capture="environment" hidden data-role="fotos-camera" />
-        </label>`;
-  const galleryLabel = `<label class="fotos-add btn btn-psm-secondary-outline">
-          <i class="bi bi-images"></i> ${escapeHtml(t("Aus Galerie"))}
-          <input type="file" accept="image/*" multiple hidden data-role="fotos-gallery-input" />
-        </label>`;
+  const cameraInputHtml = `<input type="file" accept="image/*" capture="environment" hidden data-role="fotos-camera" />`;
+  const galleryInputHtml = `<input type="file" accept="image/*" multiple hidden data-role="fotos-gallery-input" />`;
+  const cameraBtn = (extra = "") =>
+    `<label class="fotos-add btn btn-psm-primary${extra}"><i class="bi bi-camera-fill"></i> ${escapeHtml(
+      t("Foto aufnehmen"),
+    )}${cameraInputHtml}</label>`;
+  const galleryBtn = `<label class="fotos-add btn btn-psm-secondary-outline"><i class="bi bi-images"></i> ${escapeHtml(
+    t("Aus Galerie"),
+  )}${galleryInputHtml}</label>`;
+  // Aufnahme-Ziel-Dropdown – in BEIDEN Layouts vorhanden; Chips sind reiner Filter.
+  const captureSelect = (cls = "") =>
+    `<select class="form-select ${cls}" data-role="fotos-capture-kat">${buildKatOptions(captureKat)}</select>`;
   const emptyHtml = `<div class="fotos-empty" data-role="fotos-empty">${escapeHtml(
     t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".'),
   )}</div>`;
@@ -272,11 +276,11 @@ export function initFotos(
       <div class="fotos-capture">
         <label class="fotos-capture-cat">
           <span>${escapeHtml(t("Kategorie für neue Fotos"))}</span>
-          <select class="form-select" data-role="fotos-capture-kat">${buildKatOptions(captureKat)}</select>
+          ${captureSelect()}
         </label>
         <div class="fotos-capture-actions">
-          ${cameraLabel}
-          ${galleryLabel}
+          ${cameraBtn(" fotos-add-hero")}
+          ${galleryBtn}
         </div>
         <span class="fotos-hint" data-role="fotos-status"></span>
       </div>
@@ -296,23 +300,30 @@ export function initFotos(
       ${emptyHtml}
     </div>`;
   } else {
+    // Desktop: aufgeräumte Toolbar – Aufnahme (links) klar getrennt von
+    // Stöbern/Steuerung (rechts); Filter-Chips als eigene „Browse"-Zeile mit Zähler.
     host.innerHTML = `
-    <div class="fotos-wrap">
-      <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
-      <div class="fotos-bar">
-        ${cameraLabel}
-        ${galleryLabel}
-        <span class="fotos-hint" data-role="fotos-status"></span>
+    <div class="fotos-wrap fotos-wrap--desktop">
+      <div class="fotos-toolbar">
+        <div class="fotos-toolbar-capture">
+          ${cameraBtn()}
+          ${galleryBtn}
+          <label class="fotos-katpick">${escapeHtml(t("Neue Fotos →"))} ${captureSelect(
+            "form-select-sm",
+          )}</label>
+          <span class="fotos-hint" data-role="fotos-status"></span>
+        </div>
+        <div class="fotos-toolbar-controls">
+          ${searchBox}
+          <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
+            t("Sortierung umschalten"),
+          )}"></button>
+          ${selectBtn}
+        </div>
       </div>
-      <div class="fotos-target">${escapeHtml(t("Neue Fotos →"))} <b data-role="fotos-target"></b></div>
-      <div class="fotos-controls">
-        ${searchBox}
-        <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
-          t("Sortierung umschalten"),
-        )}"></button>
+      <div class="fotos-browsebar">
+        <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
         <span class="fotos-count" data-role="fotos-count"></span>
-        <span class="fotos-controls-spacer"></span>
-        ${selectBtn}
       </div>
       <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
       <div class="fotos-gallery" data-role="fotos-gallery"></div>
@@ -633,17 +644,8 @@ export function initFotos(
     const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(".fotos-chip");
     if (!btn) return;
     activeFilter = btn.dataset.filter || "";
-    // Desktop: Chip ist Filter UND Aufnahme-Ziel. Mobil: reiner Galerie-Filter
-    // (Aufnahme-Ziel steuert das Dropdown – sonst „springt" das Ziel beim Stöbern).
-    if (!mobile && activeFilter) {
-      captureKat = activeFilter;
-      try {
-        localStorage.setItem(LAST_KAT_KEY, captureKat);
-      } catch {
-        /* ignore */
-      }
-      updateTarget();
-    }
+    // Chips sind reiner Galerie-Filter; das Aufnahme-Ziel steuert das Kategorie-
+    // Dropdown (eindeutige Trennung „Stöbern" ↔ „Aufnehmen", beide Layouts).
     filterBar
       .querySelectorAll(".fotos-chip")
       .forEach((c) => c.classList.toggle("is-active", c === btn));
