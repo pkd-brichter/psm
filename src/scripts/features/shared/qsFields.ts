@@ -52,7 +52,7 @@ export function renderQsFieldsHtml(
         </div>`;
 
   return `
-    <fieldset class="${QS_CSS_CLASSES.container} qs-fields-section calc-fieldset mt-4" style="border-top: 1px solid var(--border-1); padding-top: var(--sp-4);">
+    <fieldset class="${QS_CSS_CLASSES.container} qs-fields-section calc-fieldset mt-4" data-wiz-group="qs" style="border-top: 1px solid var(--border-1); padding-top: var(--sp-4);">
       ${headerHtml}
       <div class="qs-fields-content" style="display: ${isVisible ? "block" : "none"};">
         <small class="text-muted d-block mb-3">Dokumentationsfelder gemäß QS-GAP-Leitfaden 3.6.2${demeter ? " – im Demeter-Betrieb Pflicht" : " (optional)"}</small>

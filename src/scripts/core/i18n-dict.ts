@@ -4,6 +4,13 @@
  * Generiert/zusammengeführt – Ergänzungen: einfach weitere Zeilen hinzufügen.
  */
 export const DE_PL: Record<string, string> = {
+  // PSM-Mobil-Wizard (Schritt-für-Schritt; "Mittel & Codes" ist bereits weiter
+  // unten im Wörterbuch vorhanden)
+  "Schritt": "Krok",
+  "Anwendung & QS": "Zastosowanie i QS",
+  "Übersicht & Speichern": "Przegląd i zapis",
+  "Bitte Ihren Namen eintragen.": "Proszę podać imię i nazwisko.",
+  "Bitte die Fläche in Hektar eintragen.": "Proszę podać powierzchnię w hektarach.",
   "Neue Fotos →": "Nowe zdjęcia →",
   "Kategorie für neue Fotos": "Kategoria dla nowych zdjęć",
   "Galerie": "Galeria",

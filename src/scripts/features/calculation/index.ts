@@ -48,6 +48,7 @@ import {
   extractQsFieldsFromForm,
   initQsFieldsToggle,
 } from "../shared/qsFields";
+import { initCalculationWizard } from "./mobileWizard";
 
 // Cached quick select data
 let cachedEppoQuickSelect: Array<{
@@ -168,7 +169,7 @@ function createSection(
       <div class="card-body p-4">
         <form id="calculationForm" class="no-print">
           <!-- Gruppe 1: Grunddaten -->
-          <fieldset class="calc-fieldset mb-4">
+          <fieldset class="calc-fieldset mb-4" data-wiz-group="grund">
             <legend class="calc-legend">
               <i class="bi bi-person-badge me-2"></i>Grunddaten
             </legend>
@@ -214,7 +215,7 @@ function createSection(
           </fieldset>
           
           <!-- Gruppe 2: Mittel & Codes -->
-          <fieldset class="calc-fieldset mb-4">
+          <fieldset class="calc-fieldset mb-4" data-wiz-group="codes">
             <legend class="calc-legend">
               <i class="bi bi-tags me-2"></i>Mittel &amp; Codes
             </legend>
@@ -251,7 +252,7 @@ function createSection(
           </fieldset>
 
           <!-- Gruppe 2b: Mittel für die gewählte Kultur (Pestalozzi/Demeter) -->
-          <fieldset class="calc-fieldset mb-4" data-role="kultur-mittel-fieldset" style="display:none;">
+          <fieldset class="calc-fieldset mb-4" data-role="kultur-mittel-fieldset" data-wiz-group="mittel" style="display:none;">
             <legend class="calc-legend">
               <i class="bi bi-list-check me-2"></i>Mittel für die Kultur
             </legend>
@@ -267,7 +268,7 @@ function createSection(
           </fieldset>
 
           <!-- Gruppe 3: Verwendung, Ort & Zeit -->
-          <fieldset class="calc-fieldset mb-4">
+          <fieldset class="calc-fieldset mb-4" data-wiz-group="anwendung">
             <legend class="calc-legend">
               <i class="bi bi-calendar-event me-2"></i>Verwendung, Ort &amp; Zeit
             </legend>
@@ -308,7 +309,7 @@ function createSection(
             behandlungsart: formDefaults.qsBehandlungsart || "",
           })}
           
-          <div class="text-center mt-4">
+          <div class="text-center mt-4" data-wiz-submit>
             <button type="submit" class="btn btn-lg btn-psm-primary px-5">
               <i class="bi bi-calculator me-2"></i>Berechnen ${renderQsBadge()}
             </button>
@@ -2003,6 +2004,16 @@ export function initCalculation(
   });
 
   setCalcContext(initialState.calcContext as CalculationResult | null);
+
+  // Mobil: Erfassung als Schritt-für-Schritt-Wizard präsentieren (Desktop bleibt
+  // die volle Maske). Rein optische Schicht über den bestehenden Feldern.
+  if (document.body.classList.contains("m-page")) {
+    try {
+      initCalculationWizard(section);
+    } catch (err) {
+      console.warn("[PSM] Mobiler Wizard konnte nicht initialisiert werden", err);
+    }
+  }
 
   initialized = true;
 }
