@@ -1647,8 +1647,8 @@ html.qs-mode .card-dark {
 .fotos-add-hero { font-size: 1.05rem; padding-top: 13px; padding-bottom: 13px; }
 .fotos-capture .fotos-hint:empty { display: none; }
 
-/* Galerie-Kopf (mobil): Titel + Zähler + Sortierung in einer Zeile */
-.fotos-galhead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+/* Galerie-Kopf: Titel + Zähler + Sortierung (Desktop zusätzlich Suche/Auswählen) */
+.fotos-galhead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .fotos-galhead[hidden] { display: none; }
 .fotos-galhead-title { font-size: 1rem; font-weight: 700; color: var(--text); }
 
@@ -1664,6 +1664,24 @@ html.qs-mode .card-dark {
 .fotos-filter--scroll[hidden] { display: none; }
 .fotos-filter--scroll::-webkit-scrollbar { display: none; }
 .fotos-filter--scroll .fotos-chip { flex: 0 0 auto; padding: 7px 14px; font-size: 0.85rem; }
+
+/* ---- Desktop: gleiche „Aufnahme-zuerst"-Struktur, breit ausgelegt ---- */
+/* Aufnahme-Karte horizontal: Dropdown + Buttons nebeneinander, Status rechts. */
+.fotos-wrap--desktop .fotos-capture {
+  flex-direction: row;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.fotos-wrap--desktop .fotos-capture-cat { flex: 0 1 300px; }
+.fotos-wrap--desktop .fotos-capture-actions { flex-direction: row; align-items: stretch; }
+.fotos-wrap--desktop .fotos-capture .fotos-add { width: auto; }
+.fotos-wrap--desktop .fotos-capture .fotos-hint { margin-left: auto; align-self: center; }
+
+/* Filter-Chips Desktop: EINE umbrechende Reihe statt gruppierter Chip-Wand. */
+.fotos-filter--flat { flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.fotos-filter--flat[hidden] { display: none; }
+.fotos-filter--flat .fotos-chip { padding: 6px 14px; font-size: 0.82rem; }
 
 /* Auswahl-Aktionsleiste (sticky oben) */
 .fotos-bulkbar {

@@ -264,11 +264,18 @@ export function initFotos(
     t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".'),
   )}</div>`;
 
-  if (mobile) {
-    // Aufnahme-zuerst: eine klare „Aufnahme-Karte" (Kategorie-Auswahl + große
-    // Buttons) ganz oben; Galerie + Filter deutlich darunter abgesetzt.
-    host.innerHTML = `
-    <div class="fotos-wrap fotos-wrap--mobile">
+  // Aufnahme-zuerst aus EINER Struktur (Desktop + Mobil): klare „Aufnahme-Karte"
+  // ganz oben (Kategorie-Auswahl + große Buttons), darunter deutlich abgesetzt der
+  // Galerie-Kopf, EINE Filter-Reihe (keine Chip-Wand) und das Bildraster.
+  //  - Desktop legt die Karte breit aus (Dropdown + Buttons nebeneinander) und
+  //    blendet im Galerie-Kopf zusätzlich Suche + „Auswählen" ein (archiveMode).
+  //  - Mobil bleibt schmal/gestapelt; Filter als horizontal scrollbare Reihe.
+  const wrapClass = mobile ? "fotos-wrap fotos-wrap--mobile" : "fotos-wrap fotos-wrap--desktop";
+  const filterClass = mobile
+    ? "fotos-filter fotos-filter--scroll"
+    : "fotos-filter fotos-filter--flat";
+  host.innerHTML = `
+    <div class="${wrapClass}">
       <div class="fotos-capture">
         <label class="fotos-capture-cat">
           <span>${escapeHtml(t("Kategorie für neue Fotos"))}</span>
@@ -284,41 +291,20 @@ export function initFotos(
         <span class="fotos-galhead-title">${escapeHtml(t("Galerie"))}</span>
         <span class="fotos-count" data-role="fotos-count"></span>
         <span class="fotos-controls-spacer"></span>
-        <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
-          t("Sortierung umschalten"),
-        )}"></button>
-      </div>
-      <div class="fotos-filter fotos-filter--scroll" data-role="fotos-filter" hidden>${buildFilterChips(
-        activeFilter,
-        true,
-      )}</div>
-      <div class="fotos-gallery" data-role="fotos-gallery"></div>
-      ${emptyHtml}
-    </div>`;
-  } else {
-    host.innerHTML = `
-    <div class="fotos-wrap">
-      <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
-      <div class="fotos-bar">
-        ${cameraLabel}
-        ${galleryLabel}
-        <span class="fotos-hint" data-role="fotos-status"></span>
-      </div>
-      <div class="fotos-target">${escapeHtml(t("Neue Fotos →"))} <b data-role="fotos-target"></b></div>
-      <div class="fotos-controls">
         ${searchBox}
         <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
           t("Sortierung umschalten"),
         )}"></button>
-        <span class="fotos-count" data-role="fotos-count"></span>
-        <span class="fotos-controls-spacer"></span>
         ${selectBtn}
       </div>
+      <div class="${filterClass}" data-role="fotos-filter" hidden>${buildFilterChips(
+        activeFilter,
+        true,
+      )}</div>
       <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
       <div class="fotos-gallery" data-role="fotos-gallery"></div>
       ${emptyHtml}
     </div>`;
-  }
 
   const cameraInput = host.querySelector<HTMLInputElement>('[data-role="fotos-camera"]');
   const galleryInput = host.querySelector<HTMLInputElement>('[data-role="fotos-gallery-input"]');
@@ -515,9 +501,9 @@ export function initFotos(
     const items = getFiltered();
     updateCount(items.length);
     updateChipCounts();
-    // Mobil: Galerie-Kopf + Filter erst zeigen, wenn überhaupt Fotos da sind –
-    // der Erststart bleibt so auf die Aufnahme-Karte fokussiert.
-    if (mobile) {
+    // Galerie-Kopf + Filter erst zeigen, wenn überhaupt Fotos da sind – der
+    // Erststart bleibt so auf die Aufnahme-Karte fokussiert (Desktop + Mobil).
+    {
       const hasPhotos = dbTotal > 0;
       if (galheadEl) galheadEl.hidden = !hasPhotos;
       if (filterBar) filterBar.hidden = !hasPhotos;
@@ -616,8 +602,8 @@ export function initFotos(
   wireInput(cameraInput);
   wireInput(galleryInput);
 
-  // Mobil: das Kategorie-Dropdown ist das Aufnahme-Ziel (entkoppelt vom Galerie-
-  // Filter) – so ist beim Tippen auf „Foto aufnehmen" klar, wohin das Foto kommt.
+  // Das Kategorie-Dropdown ist das Aufnahme-Ziel (entkoppelt vom Galerie-Filter,
+  // Desktop wie Mobil) – so ist beim Auslösen klar, wohin das neue Foto kommt.
   captureKatSel?.addEventListener("change", () => {
     captureKat = captureKatSel.value || captureKat;
     try {
@@ -628,22 +614,13 @@ export function initFotos(
     updateTarget();
   });
 
-  // ---- Kategorie-Chips (Filter + Aufnahme-Ziel) -----------------------------
+  // ---- Kategorie-Chips: reiner Galerie-Filter -------------------------------
+  // (Das Aufnahme-Ziel steuert das Dropdown – Filtern darf das Ziel nicht
+  // „springen" lassen; gilt für Desktop wie Mobil.)
   filterBar?.addEventListener("click", (event) => {
     const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(".fotos-chip");
     if (!btn) return;
     activeFilter = btn.dataset.filter || "";
-    // Desktop: Chip ist Filter UND Aufnahme-Ziel. Mobil: reiner Galerie-Filter
-    // (Aufnahme-Ziel steuert das Dropdown – sonst „springt" das Ziel beim Stöbern).
-    if (!mobile && activeFilter) {
-      captureKat = activeFilter;
-      try {
-        localStorage.setItem(LAST_KAT_KEY, captureKat);
-      } catch {
-        /* ignore */
-      }
-      updateTarget();
-    }
     filterBar
       .querySelectorAll(".fotos-chip")
       .forEach((c) => c.classList.toggle("is-active", c === btn));
