@@ -1553,8 +1553,18 @@ html.qs-mode .card-dark {
 .fotos-add { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; }
 .fotos-hint { font-size: 0.85rem; color: var(--text-muted); }
 .fotos-katpick { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted); margin: 0; }
-.fotos-katpick select { min-width: 180px; }
-.fotos-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.fotos-katpick select { min-width: 200px; }
+.fotos-send { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.fotos-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 14px; }
+.fotos-filtergroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fotos-filtercap {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
 .fotos-chip {
   border: 1px solid var(--color-border);
   background: var(--surface-1);

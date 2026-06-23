@@ -407,9 +407,9 @@ async function start(): Promise<void> {
   const calcContainer = document.querySelector('[data-feature="calculation"]');
   initCalculation(calcContainer, services);
 
-  // Fotos-Bereich mounten.
+  // Fotos-Bereich mounten – mit eigenem Schnell-Senden (ZIP) direkt im Bereich.
   const fotosContainer = document.querySelector('[data-feature="fotos"]');
-  initFotos(fotosContainer, services);
+  initFotos(fotosContainer, services, { onSend: () => handleShare() });
 
   // Datenbank verbinden (löst Reload der Lookups in der Maske aus).
   await connectDatabase();

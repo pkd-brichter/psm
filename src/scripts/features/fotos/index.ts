@@ -33,19 +33,65 @@ interface InitFotosOptions {
     entryUuid?: string | null;
     kategorie?: string | null;
   };
+  /** Wenn gesetzt, zeigt der Foto-Bereich einen eigenen „Senden"-Button (mobil). */
+  onSend?: () => void | Promise<void>;
 }
 
-/** Verwendungszwecke der Fotos – steuert Filter & Badge. */
-const KATEGORIEN: { key: string; label: string }[] = [
-  { key: "kultur", label: "Kultur-Dokumentation" },
-  { key: "nachweis", label: "Flächennutzungs-Nachweis" },
-  { key: "schaden", label: "Schaden / Krankheit" },
-  { key: "sonstiges", label: "Sonstiges" },
+/**
+ * Verwendungszwecke der Fotos – betriebsweit, in Gruppen. Steuert Filter, Badge
+ * und Auswahl. `group` gruppiert in Dropdown (optgroup) und Filter.
+ */
+const GRUPPEN: { key: string; label: string }[] = [
+  { key: "pflanzenschutz", label: "Pflanzenschutz" },
+  { key: "betrieb", label: "Betrieb" },
+];
+const KATEGORIEN: { key: string; label: string; group: string }[] = [
+  { key: "kultur", label: "Kultur-Dokumentation", group: "pflanzenschutz" },
+  { key: "nachweis", label: "Flächennutzungs-Nachweis", group: "pflanzenschutz" },
+  { key: "schaden", label: "Schaden / Krankheit", group: "pflanzenschutz" },
+  { key: "werkstatt", label: "Werkstatt & Fahrzeuge", group: "betrieb" },
+  { key: "werkzeug", label: "Werkzeuge & Geräte", group: "betrieb" },
+  { key: "material", label: "Ersatzteile / Material", group: "betrieb" },
+  { key: "lieferung", label: "Lieferung / Wareneingang", group: "betrieb" },
+  { key: "sonstiges", label: "Sonstiges", group: "betrieb" },
 ];
 
 function kategorieLabel(key: string | null | undefined): string {
   if (!key) return "";
   return KATEGORIEN.find((k) => k.key === key)?.label || key;
+}
+
+/** <option>-Liste mit <optgroup> pro Gruppe; markiert `selected`. */
+function buildKatOptions(selected: string | null | undefined): string {
+  return GRUPPEN.map((g) => {
+    const opts = KATEGORIEN.filter((k) => k.group === g.key)
+      .map(
+        (k) =>
+          `<option value="${k.key}"${
+            k.key === selected ? " selected" : ""
+          }>${escapeHtml(k.label)}</option>`,
+      )
+      .join("");
+    return `<optgroup label="${escapeHtml(g.label)}">${opts}</optgroup>`;
+  }).join("");
+}
+
+/** Filter-Chips, nach Gruppen mit kleiner Überschrift. */
+function buildFilterChips(): string {
+  const groups = GRUPPEN.map((g) => {
+    const chips = KATEGORIEN.filter((k) => k.group === g.key)
+      .map(
+        (k) =>
+          `<button type="button" class="fotos-chip" data-filter="${k.key}">${escapeHtml(
+            k.label,
+          )}</button>`,
+      )
+      .join("");
+    return `<div class="fotos-filtergroup"><span class="fotos-filtercap">${escapeHtml(
+      g.label,
+    )}</span>${chips}</div>`;
+  }).join("");
+  return `<button type="button" class="fotos-chip is-active" data-filter="">Alle</button>${groups}`;
 }
 
 function genUuid(): string {
@@ -100,40 +146,42 @@ export function initFotos(
     /* ignore */
   }
 
-  const katOptions = KATEGORIEN.map(
-    (k) =>
-      `<option value="${k.key}"${k.key === lastKat ? " selected" : ""}>${escapeHtml(
-        k.label,
-      )}</option>`,
-  ).join("");
+  const katOptions = buildKatOptions(lastKat);
+
+  // Schnell-Workflow: zuerst Zweck wählen, dann aufnehmen. Kamera = ein
+  // schneller Schnappschuss; Galerie = mehrere Bilder auf einmal auswählen.
+  const sendBtn = options.onSend
+    ? `<button type="button" class="fotos-send btn btn-psm-primary" data-role="fotos-send">
+         <i class="bi bi-send"></i> Senden
+       </button>`
+    : "";
 
   host.innerHTML = `
     <div class="fotos-wrap">
       <div class="fotos-bar">
-        <label class="fotos-add btn btn-psm-primary">
-          <i class="bi bi-camera"></i> Foto aufnehmen / hinzufügen
-          <input type="file" accept="image/*" capture="environment" multiple hidden data-role="fotos-input" />
-        </label>
         <label class="fotos-katpick">
           <span>Zweck</span>
-          <select class="form-select form-select-sm" data-role="fotos-newkat">${katOptions}</select>
+          <select class="form-select" data-role="fotos-newkat">${katOptions}</select>
         </label>
+        <label class="fotos-add btn btn-psm-primary">
+          <i class="bi bi-camera-fill"></i> Foto aufnehmen
+          <input type="file" accept="image/*" capture="environment" hidden data-role="fotos-camera" />
+        </label>
+        <label class="fotos-add btn btn-psm-secondary-outline">
+          <i class="bi bi-images"></i> Aus Galerie
+          <input type="file" accept="image/*" multiple hidden data-role="fotos-gallery" />
+        </label>
+        ${sendBtn}
         <span class="fotos-hint" data-role="fotos-status"></span>
       </div>
-      <div class="fotos-filter" data-role="fotos-filter">
-        <button type="button" class="fotos-chip is-active" data-filter="">Alle</button>
-        ${KATEGORIEN.map(
-          (k) =>
-            `<button type="button" class="fotos-chip" data-filter="${k.key}">${escapeHtml(
-              k.label,
-            )}</button>`,
-        ).join("")}
-      </div>
+      <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips()}</div>
       <div class="fotos-grid" data-role="fotos-grid"></div>
-      <div class="fotos-empty" data-role="fotos-empty">Noch keine Fotos. Tippe oben auf „Foto aufnehmen".</div>
+      <div class="fotos-empty" data-role="fotos-empty">Noch keine Fotos. Zweck wählen und „Foto aufnehmen".</div>
     </div>`;
 
-  const input = host.querySelector<HTMLInputElement>('[data-role="fotos-input"]');
+  const cameraInput = host.querySelector<HTMLInputElement>('[data-role="fotos-camera"]');
+  const galleryInput = host.querySelector<HTMLInputElement>('[data-role="fotos-gallery"]');
+  const sendButton = host.querySelector<HTMLElement>('[data-role="fotos-send"]');
   const newKatSel = host.querySelector<HTMLSelectElement>('[data-role="fotos-newkat"]');
   const grid = host.querySelector<HTMLElement>('[data-role="fotos-grid"]');
   const emptyEl = host.querySelector<HTMLElement>('[data-role="fotos-empty"]');
@@ -176,7 +224,7 @@ export function initFotos(
       emptyEl.style.display = items.length ? "none" : "block";
       emptyEl.textContent = allItems.length
         ? "Keine Fotos in dieser Kategorie."
-        : 'Noch keine Fotos. Tippe oben auf „Foto aufnehmen".';
+        : 'Noch keine Fotos. Zweck wählen und „Foto aufnehmen".';
     }
     grid.innerHTML = items
       .map((f) => {
@@ -261,12 +309,21 @@ export function initFotos(
     await refresh();
   }
 
-  input?.addEventListener("change", () => {
-    if (input.files && input.files.length) {
-      void addFiles(input.files).finally(() => {
-        input.value = "";
-      });
-    }
+  const wireInput = (input: HTMLInputElement | null) => {
+    input?.addEventListener("change", () => {
+      if (input.files && input.files.length) {
+        void addFiles(input.files).finally(() => {
+          input.value = "";
+        });
+      }
+    });
+  };
+  wireInput(cameraInput);
+  wireInput(galleryInput);
+
+  // Schnell-Senden direkt aus dem Foto-Bereich (mobil) – sendet alles (ZIP).
+  sendButton?.addEventListener("click", () => {
+    void options.onSend?.();
   });
 
   // Karte anklicken -> Detailansicht
@@ -296,12 +353,7 @@ export function initFotos(
       return;
     }
 
-    const katSelect = KATEGORIEN.map(
-      (k) =>
-        `<option value="${k.key}"${
-          meta?.kategorie === k.key ? " selected" : ""
-        }>${escapeHtml(k.label)}</option>`,
-    ).join("");
+    const katSelect = buildKatOptions(meta?.kategorie);
     const gpsText =
       meta?.gpsLatitude != null && meta?.gpsLongitude != null
         ? `${meta.gpsLatitude.toFixed(5)}, ${meta.gpsLongitude.toFixed(5)}`
