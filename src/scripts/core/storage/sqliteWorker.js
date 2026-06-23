@@ -4341,13 +4341,14 @@ async function appendFoto(payload = {}) {
 async function listFotos(payload = {}) {
   if (!db) throw new Error("Database not initialized");
   ensureFotosTable();
-  const limit = Math.min(Math.max(Number(payload?.limit) || 200, 1), 1000);
+  const limit = Math.min(Math.max(Number(payload?.limit) || 200, 1), 100000);
   const rows = [];
   db.exec({
+    // created_at ist ISO-8601-Z -> lexikografisch = zeitlich; rohe Spalte nutzt idx_fotos_created.
     sql: `SELECT id, client_uuid, created_at, entry_uuid, kategorie, titel,
                  standort, kultur, gps_latitude, gps_longitude, notiz, device, mime,
                  width, height, bytes, data_thumb
-          FROM fotos ORDER BY datetime(created_at) DESC, id DESC LIMIT ?`,
+          FROM fotos ORDER BY created_at DESC, id DESC LIMIT ?`,
     bind: [limit],
     rowMode: "object",
     callback: (row) => {
@@ -4449,7 +4450,7 @@ async function exportFotosByIds(payload = {}) {
   db.exec({
     sql: `SELECT client_uuid, created_at, entry_uuid, kategorie, titel, standort,
                  kultur, gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data
-          FROM fotos WHERE id IN (${placeholders}) ORDER BY datetime(created_at) ASC, id ASC`,
+          FROM fotos WHERE id IN (${placeholders}) ORDER BY created_at ASC, id ASC`,
     bind: ids,
     rowMode: "object",
     callback: (row) => {
@@ -4512,9 +4513,18 @@ async function getFotoData(payload = {}) {
   ensureFotosTable();
   const id = payload && payload.id != null ? Number(payload.id) : null;
   if (id == null) return { data: null };
-  const data = db.selectValue("SELECT data FROM fotos WHERE id = ? LIMIT 1", [id]);
-  const mime = db.selectValue("SELECT mime FROM fotos WHERE id = ? LIMIT 1", [id]);
-  return { data: data ?? null, mime: mime || "image/jpeg" };
+  let data = null;
+  let mime = "image/jpeg";
+  db.exec({
+    sql: "SELECT data, mime FROM fotos WHERE id = ? LIMIT 1",
+    bind: [id],
+    rowMode: "object",
+    callback: (row) => {
+      data = row.data ?? null;
+      mime = row.mime || "image/jpeg";
+    },
+  });
+  return { data, mime };
 }
 
 // Alle Fotos MIT Daten (für Export/Teilen).
@@ -4525,7 +4535,7 @@ async function exportFotos() {
   db.exec({
     sql: `SELECT client_uuid, created_at, entry_uuid, kategorie, titel, standort,
                  kultur, gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data
-          FROM fotos ORDER BY datetime(created_at) ASC, id ASC`,
+          FROM fotos ORDER BY created_at ASC, id ASC`,
     rowMode: "object",
     callback: (row) => {
       rows.push({

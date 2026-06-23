@@ -17,6 +17,7 @@ import {
   persistSqliteDatabaseFile,
 } from "@scripts/core/storage/sqlite";
 import { toast } from "@scripts/core/toast";
+import { t } from "@scripts/core/i18n";
 import { setUnsharedCount } from "./unshared";
 import { zipSync, strToU8 } from "fflate";
 
@@ -33,7 +34,7 @@ async function clearFotosAfterSend(): Promise<void> {
       new CustomEvent("fotos:changed", { detail: { added: 0 } }),
     );
     if (res?.deleted) {
-      toast.info(`${res.deleted} Foto(s) gesendet und vom Gerät entfernt.`);
+      toast.info(`${res.deleted} ${t("Foto(s) gesendet und vom Gerät entfernt.")}`);
     }
   } catch (err) {
     console.warn("[Share] Fotos konnten nach dem Senden nicht entfernt werden", err);
@@ -172,8 +173,9 @@ export async function shareMobileData(): Promise<void> {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setUnsharedCount(0);
+    // Beim Download-Fallback NICHT automatisch löschen: a.click() bestätigt nicht,
+    // ob die Datei wirklich gespeichert wurde – sonst Datenverlust-Falle.
     toast.info("Datei wurde heruntergeladen.");
-    await clearFotosAfterSend();
   } catch (err) {
     console.error("[Share] Download fehlgeschlagen", err);
     toast.error("Teilen wird auf diesem Gerät nicht unterstützt.");

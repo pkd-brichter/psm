@@ -12,6 +12,8 @@ const DEFAULT_WORKER_TIMEOUT = 30000;
 const LONG_RUNNING_ACTION_TIMEOUTS: Record<string, number> = {
   exportHistoryRange: 60 * 1000,
   exportDB: 60 * 1000,
+  exportFotos: 60 * 1000,
+  exportFotosByIds: 60 * 1000,
 };
 
 type PendingMessage = {

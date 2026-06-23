@@ -18,6 +18,7 @@ import {
   exportFotosByIds,
   updateFoto,
   setFotoThumb,
+  getFotoCounts,
   persistSqliteDatabaseFile,
   type FotoMeta,
 } from "@scripts/core/storage/sqlite";
@@ -65,7 +66,7 @@ const KATEGORIEN: { key: string; label: string; group: string }[] = [
 
 function kategorieLabel(key: string | null | undefined): string {
   if (!key) return "";
-  return KATEGORIEN.find((k) => k.key === key)?.label || key;
+  return t(KATEGORIEN.find((k) => k.key === key)?.label || key);
 }
 
 function buildKatOptions(selected: string | null | undefined): string {
@@ -232,12 +233,21 @@ export function initFotos(
       )}</button>`
     : "";
 
-  let activeFilter = lastKat;
+  // Anzeige-Filter startet auf „Alle" (voller Bestand sichtbar); das Aufnahme-Ziel
+  // (captureKat) bleibt die zuletzt genutzte Kategorie.
+  let activeFilter = "";
   let captureKat = lastKat;
   let allItems: FotoMeta[] = [];
+  let fotoMap = new Map<number, FotoMeta>();
+  let dbTotal = 0;
+  let dbBytes = 0;
+  let dbCounts: Record<string, number> = {};
   let searchQuery = "";
   let selectMode = false;
+  let renderLimit = 150; // inkrementelles Rendern (Scroll lädt mehr)
+  const failedThumbs = new Set<number>();
   const selected = new Set<number>();
+  const GALLERY_LOAD_CAP = 5000;
 
   host.innerHTML = `
     <div class="fotos-wrap">
@@ -344,27 +354,61 @@ export function initFotos(
 
   function updateCount(shown: number): void {
     if (!countEl) return;
-    const total = allItems.length;
-    const bytes = allItems.reduce((s, f) => s + (f.bytes || 0), 0);
-    if (shown === total) {
-      countEl.textContent = `${total} ${t("Fotos")} · ${fmtSize(bytes)}`;
+    const filtered = activeFilter || searchQuery.trim();
+    const parts: string[] = [];
+    if (filtered) {
+      parts.push(`${shown} ${t("von")} ${dbTotal} ${t("Fotos")}`);
     } else {
-      countEl.textContent = `${shown} / ${total} ${t("Fotos")}`;
+      parts.push(`${dbTotal} ${t("Fotos")} · ${fmtSize(dbBytes)}`);
     }
+    // Hinweis, falls nicht der gesamte Bestand geladen ist (sehr großes Archiv).
+    if (allItems.length < dbTotal) {
+      parts.push(`(${allItems.length} ${t("geladen")})`);
+    }
+    countEl.textContent = parts.join(" ");
+  }
+
+  // Anzahl-Badge je Kategorie-Chip (aus echten DB-Counts).
+  function updateChipCounts(): void {
+    if (!filterBar) return;
+    filterBar.querySelectorAll<HTMLElement>(".fotos-chip[data-filter]").forEach((chip) => {
+      const key = chip.dataset.filter || "";
+      const n = key ? dbCounts[key] || 0 : dbTotal;
+      let badge = chip.querySelector<HTMLElement>(".fotos-chip-n");
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "fotos-chip-n";
+        chip.appendChild(document.createTextNode(" "));
+        chip.appendChild(badge);
+      }
+      badge.textContent = n ? String(n) : "";
+      chip.classList.toggle("fotos-chip-empty", !n && !!key);
+    });
   }
 
   // ---- Thumbnails setzen + Backfill für fehlende (Altbestand/Importe) -------
   // Vorhandene Thumbnails (~10 KB) werden direkt gesetzt – NIE das Vollbild.
   // Fehlende werden gebatcht (max 3 parallel) aus dem Vollbild erzeugt und
   // einmalig in die DB zurückgeschrieben.
+  // Nur SICHTBARE/gerenderte Kacheln ohne Thumb werden hier eingereiht (kein
+  // Massen-Backfill). Persist wird stark debounced – sonst würde JEDES Thumb die
+  // KOMPLETTE DB-Binärdatei neu schreiben.
   const backfillQueue: { id: number; img: HTMLImageElement }[] = [];
   let backfillActive = 0;
-  let backfillDirty = 0;
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleBackfillPersist(): void {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      void persistSqliteDatabaseFile().catch(() => undefined);
+    }, 2500);
+  }
 
   function pumpBackfill(): void {
-    while (backfillActive < 3 && backfillQueue.length) {
+    while (backfillActive < 2 && backfillQueue.length) {
       const job = backfillQueue.shift()!;
-      if (!job.img.isConnected) continue;
+      if (!job.img.isConnected || failedThumbs.has(job.id)) continue;
       backfillActive += 1;
       void (async () => {
         try {
@@ -372,17 +416,15 @@ export function initFotos(
           if (full?.data) {
             const thumb = await thumbnailFromBase64(full.data, full.mime);
             if (job.img.isConnected) job.img.src = fotoDataUrl(thumb);
-            const item = allItems.find((f) => f.id === job.id);
+            const item = fotoMap.get(job.id);
             if (item) item.thumb = thumb;
             await setFotoThumb(job.id, thumb).catch(() => undefined);
-            backfillDirty += 1;
-            if (backfillDirty >= 8) {
-              backfillDirty = 0;
-              await persistSqliteDatabaseFile().catch(() => undefined);
-            }
+            scheduleBackfillPersist();
+          } else {
+            failedThumbs.add(job.id);
           }
         } catch {
-          /* einzelnes Thumb ignorieren */
+          failedThumbs.add(job.id); // dauerhaft fehlerhaftes Bild nicht endlos retryen
         } finally {
           backfillActive -= 1;
           pumpBackfill();
@@ -405,43 +447,69 @@ export function initFotos(
       </button>`;
   }
 
+  function tilesForThumbs(): void {
+    if (!gallery) return;
+    backfillQueue.length = 0;
+    gallery
+      .querySelectorAll<HTMLImageElement>("img.fotos-tile-img")
+      .forEach((img) => {
+        if (img.src) return; // schon gesetzt (beim Nachladen behalten)
+        const id = Number(img.dataset.thumbId);
+        const item = fotoMap.get(id);
+        if (item?.thumb) {
+          img.src = fotoDataUrl(item.thumb);
+        } else if (!failedThumbs.has(id)) {
+          backfillQueue.push({ id, img });
+        }
+      });
+    pumpBackfill();
+  }
+
+  let loadMoreObserver: IntersectionObserver | null = null;
+
   function renderGallery(): void {
     if (!gallery) return;
     const items = getFiltered();
     updateCount(items.length);
+    updateChipCounts();
     if (emptyEl) {
-      const showEmpty = items.length === 0;
-      emptyEl.style.display = showEmpty ? "block" : "none";
+      emptyEl.style.display = items.length === 0 ? "block" : "none";
       emptyEl.textContent = !allItems.length
         ? t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".')
         : searchQuery.trim()
           ? t("Keine Treffer für die Suche.")
           : t("Keine Fotos in dieser Kategorie.");
     }
-    const buckets = buildBuckets(items);
-    gallery.innerHTML = buckets
-      .map(
-        (b) => `
+    // Inkrementell: nur die ersten renderLimit Kacheln (Scroll lädt mehr nach).
+    const visible = items.slice(0, renderLimit);
+    const hasMore = items.length > visible.length;
+    const buckets = buildBuckets(visible);
+    gallery.innerHTML =
+      buckets
+        .map(
+          (b) => `
         <div class="fotos-section">
           <div class="fotos-section-head">${escapeHtml(b.label)} <span>· ${b.items.length}</span></div>
           <div class="fotos-grid">${b.items.map(tileHtml).join("")}</div>
         </div>`,
-      )
-      .join("");
-    // Vorhandene Thumbnails direkt setzen; fehlende zum Backfill einreihen.
-    backfillQueue.length = 0;
-    gallery
-      .querySelectorAll<HTMLImageElement>("img.fotos-tile-img")
-      .forEach((img) => {
-        const id = Number(img.dataset.thumbId);
-        const item = allItems.find((f) => f.id === id);
-        if (item?.thumb) {
-          img.src = fotoDataUrl(item.thumb);
-        } else {
-          backfillQueue.push({ id, img });
-        }
-      });
-    pumpBackfill();
+        )
+        .join("") +
+      (hasMore ? `<div class="fotos-more" data-role="fotos-more"></div>` : "");
+    tilesForThumbs();
+    // Sentinel am Ende: beim Sichtwerden mehr rendern.
+    loadMoreObserver?.disconnect();
+    if (hasMore) {
+      const sentinel = gallery.querySelector('[data-role="fotos-more"]');
+      if (sentinel) {
+        loadMoreObserver = new IntersectionObserver((entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            renderLimit += 150;
+            renderGallery();
+          }
+        });
+        loadMoreObserver.observe(sentinel);
+      }
+    }
   }
 
   // ---- Aufnahme -------------------------------------------------------------
@@ -516,6 +584,7 @@ export function initFotos(
     filterBar
       .querySelectorAll(".fotos-chip")
       .forEach((c) => c.classList.toggle("is-active", c === btn));
+    renderLimit = 150;
     renderGallery();
   });
 
@@ -525,6 +594,7 @@ export function initFotos(
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       searchQuery = searchEl.value || "";
+      renderLimit = 150;
       renderGallery();
     }, 150);
   });
@@ -536,6 +606,7 @@ export function initFotos(
       /* ignore */
     }
     updateSortBtn();
+    renderLimit = 150;
     renderGallery();
   });
 
@@ -702,7 +773,7 @@ export function initFotos(
 
   // ---- Detail / Lightbox ----------------------------------------------------
   async function openViewer(id: number): Promise<void> {
-    const meta = allItems.find((f) => f.id === id);
+    const meta = fotoMap.get(id);
     let dataUrl = "";
     let base64 = "";
     let mime = "image/jpeg";
@@ -738,7 +809,11 @@ export function initFotos(
           )}"><i class="bi bi-x-lg"></i></button>
         </div>
         <div class="fotos-modal-body">
-          <div class="fotos-modal-img"><img src="${dataUrl}" alt="Foto" /></div>
+          <div class="fotos-modal-img">
+            <button type="button" class="fotos-nav fotos-nav-prev" data-act="prev" aria-label="${escapeHtml(t("Zurück"))}"><i class="bi bi-chevron-left"></i></button>
+            <img src="${dataUrl}" alt="Foto" />
+            <button type="button" class="fotos-nav fotos-nav-next" data-act="next" aria-label="${escapeHtml(t("Weiter"))}"><i class="bi bi-chevron-right"></i></button>
+          </div>
           <div class="fotos-modal-created">
             <i class="bi bi-clock"></i> ${escapeHtml(fmtWhen(meta?.createdAt || ""))}${
               meta?.device ? " · " + escapeHtml(meta.device) : ""
@@ -805,7 +880,24 @@ export function initFotos(
         </div>
       </div>`;
 
+    // Blättern zwischen Fotos (in aktueller Filter-/Sortier-Reihenfolge).
+    const navList = getFiltered();
+    const curIdx = navList.findIndex((f) => f.id === id);
+    const goto = (delta: number) => {
+      const next = navList[curIdx + delta];
+      if (next) {
+        close();
+        void openViewer(next.id);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+      else if (e.key === "ArrowLeft") goto(-1);
+      else if (e.key === "ArrowRight") goto(1);
+    };
+    document.addEventListener("keydown", onKey);
     const close = () => {
+      document.removeEventListener("keydown", onKey);
       modal.remove();
       document.body.classList.remove("fotos-modal-open");
     };
@@ -843,6 +935,10 @@ export function initFotos(
       const tgt = ev.target as HTMLElement | null;
       if (tgt?.closest('[data-act="close"]')) {
         close();
+      } else if (tgt?.closest('[data-act="prev"]')) {
+        goto(-1);
+      } else if (tgt?.closest('[data-act="next"]')) {
+        goto(1);
       } else if (tgt?.closest('[data-act="save"]')) {
         await saveMeta();
         close();
@@ -872,7 +968,8 @@ export function initFotos(
         );
       } else if (tgt?.closest('[data-act="share"]')) {
         const titel = readField("titel") || displayName(meta || ({} as FotoMeta)) || `foto-${id}`;
-        const fname = (titel.replace(/[^a-z0-9äöü\- ]/gi, "").trim() || `foto-${id}`) + ".jpg";
+        // Nur pfad-unsichere Zeichen entfernen (polnische/deutsche Diakritika bleiben).
+        const fname = (titel.replace(/[\\/:*?"<>|]+/g, "").trim() || `foto-${id}`) + ".jpg";
         const file = base64ToFile(base64, mime, fname);
         const nav = navigator as Navigator & {
           canShare?: (d?: any) => boolean;
@@ -924,11 +1021,27 @@ export function initFotos(
     }
     refreshing = true;
     try {
-      const res = await listFotos(1000);
+      const [res, counts] = await Promise.all([
+        listFotos(GALLERY_LOAD_CAP),
+        getFotoCounts().catch(() => null),
+      ]);
       allItems = res.items || [];
+      fotoMap = new Map(allItems.map((f) => [f.id, f]));
+      if (counts) {
+        dbCounts = counts.counts || {};
+        dbTotal = counts.total || allItems.length;
+        dbBytes = counts.totalBytes || 0;
+      } else {
+        dbTotal = allItems.length;
+        dbBytes = allItems.reduce((s, f) => s + (f.bytes || 0), 0);
+      }
     } catch (err) {
       console.warn("[Fotos] Laden fehlgeschlagen", err);
       allItems = [];
+      fotoMap = new Map();
+      dbTotal = 0;
+      dbBytes = 0;
+      dbCounts = {};
     }
     renderGallery();
     refreshing = false;
@@ -944,6 +1057,7 @@ export function initFotos(
   window.addEventListener("i18n:changed", () => {
     updateSortBtn();
     updateTarget();
+    if (selectMode) renderBulkBar();
     renderGallery();
   });
   void refresh();

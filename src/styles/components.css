@@ -1674,7 +1674,22 @@ html.qs-mode .card-dark {
   background: var(--surface-2);
   padding: 0;
   cursor: pointer;
+  /* Off-screen Kacheln nicht layouten/dekodieren (Speicher/Reflow bei vielen Fotos) */
+  content-visibility: auto;
+  contain-intrinsic-size: 160px 160px;
 }
+.fotos-chip-n {
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.12);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.fotos-chip.is-active .fotos-chip-n { background: rgba(255, 255, 255, 0.28); }
+.fotos-chip-empty { opacity: 0.5; }
+.fotos-more { height: 1px; }
 .fotos-tile:hover { border-color: var(--border-2); }
 .fotos-tile-img {
   width: 100%;
@@ -1770,10 +1785,31 @@ body.fotos-modal-open { overflow: hidden; }
 .fotos-modal-x { border: none; background: var(--surface-2); color: var(--text); width: 34px; height: 34px; border-radius: 999px; cursor: pointer; }
 .fotos-modal-body { flex: 1; overflow: auto; padding: 14px; }
 .fotos-modal-img {
+  position: relative;
   display: flex; align-items: center; justify-content: center;
   background: var(--surface-2); border-radius: 10px; overflow: hidden; margin-bottom: 12px;
 }
 .fotos-modal-img img { max-width: 100%; max-height: 52vh; display: block; }
+.fotos-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.fotos-nav-prev { left: 8px; }
+.fotos-nav-next { right: 8px; }
+.fotos-nav:hover { background: rgba(15, 23, 42, 0.78); }
 .fotos-modal-created { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; }
 .fotos-modal-created i { margin-right: 4px; }
 .fotos-form { display: flex; flex-direction: column; gap: 12px; }
