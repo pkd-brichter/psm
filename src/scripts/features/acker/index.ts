@@ -314,6 +314,7 @@ export function initAcker(container: Element | null, services: Services): void {
   const styleOutline = (fl: any, sel: boolean) => ({
     color: fl.color, weight: sel ? 3 : 2, fillColor: fl.color,
     fillOpacity: sel ? 0.05 : 0.12, dashArray: sel ? null : "4 4",
+    bubblingMouseEvents: false,
   });
   const bedStyle = (fl: any) => ({ color: fl.color, weight: 1, fillColor: fl.color, fillOpacity: 0.4 });
 
@@ -331,6 +332,7 @@ export function initAcker(container: Element | null, services: Services): void {
     fl.bedsLayer.addTo(map);
     fl.outline = L.polygon(fl.latlngs, styleOutline(fl, sel)).addTo(map);
     fl.outline.on("click", () => select(fl._key));
+    fl.outline.on("contextmenu", (e: any) => onFieldContextMenu(fl, e));
     if (sel) buildHandles(fl);
   }
   // Eckpunkt-Handles (verschieben), dazu Mittelpunkt-Handles zum EINFÜGEN neuer
@@ -515,6 +517,7 @@ export function initAcker(container: Element | null, services: Services): void {
     return { areaM2, perimM, n };
   }
   function updateDrawStatus() {
+    syncOverlay();
     const s = el('[data-role="acker-drawstat"]');
     if (!s) return;
     const { areaM2, perimM, n } = provisionalStats();
@@ -544,6 +547,7 @@ export function initAcker(container: Element | null, services: Services): void {
       temp = null; fillTemp = null; dots = []; pts = [];
     }
     refreshToolButtons();
+    closeCtx();
     updateDrawStatus();
   }
   function undoPoint() {
@@ -609,6 +613,8 @@ export function initAcker(container: Element | null, services: Services): void {
       rectPreview = null; rectDot = null; rectStart = null;
     }
     refreshToolButtons();
+    closeCtx();
+    syncOverlay();
   }
   function rectCorners(a: any, b: any): any[] {
     return [[a[0], a[1]], [a[0], b[1]], [b[0], b[1]], [b[0], a[1]]];
@@ -619,6 +625,7 @@ export function initAcker(container: Element | null, services: Services): void {
     if (!rectStart) {
       rectStart = p;
       rectDot = L.circleMarker(e.latlng, { radius: 4, color: "#22c55e", fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(map);
+      syncOverlay();
     } else {
       const corners = rectCorners(rectStart, p);
       setRect(false);
@@ -630,6 +637,141 @@ export function initAcker(container: Element | null, services: Services): void {
     const corners = rectCorners(rectStart, [e.latlng.lat, e.latlng.lng]);
     if (!rectPreview) rectPreview = L.polygon(corners, { color: "#22c55e", weight: 2, dashArray: "5 5", fillColor: "#22c55e", fillOpacity: 0.12, interactive: false }).addTo(map);
     else rectPreview.setLatLngs(corners);
+  }
+
+  // ---------- On-Map-Overlay (Hinweis + große Aktionen direkt auf der Karte) ----------
+  // Lag die Anleitung nur in der Seitenleiste, war beim Klicken auf die Karte
+  // unklar, wie viele Klicks nötig sind. Dieses Overlay steht oben auf der Karte
+  // und sagt live, was zu tun ist.
+  let drawOverlay: HTMLElement | null = null;
+  let ovInstr: HTMLElement | null = null, ovStat: HTMLElement | null = null;
+  let ovFinish: HTMLButtonElement | null = null, ovUndo: HTMLButtonElement | null = null;
+  function ensureOverlay() {
+    if (drawOverlay || !map) return;
+    drawOverlay = document.createElement("div");
+    drawOverlay.className = "acker-ov";
+    drawOverlay.innerHTML = `
+      <div class="acker-ov-instr" data-ov="instr"></div>
+      <div class="acker-ov-stat" data-ov="stat"></div>
+      <div class="acker-ov-btns">
+        <button class="btn btn-sm btn-psm-primary" data-ov="finish">✓ Fertig</button>
+        <button class="btn btn-sm btn-psm-secondary-outline" data-ov="undo">↶ Zurück</button>
+        <button class="btn btn-sm btn-psm-secondary-outline" data-ov="cancel">✕ Abbrechen</button>
+      </div>`;
+    map.getContainer().appendChild(drawOverlay);
+    L.DomEvent.disableClickPropagation(drawOverlay);
+    L.DomEvent.disableScrollPropagation(drawOverlay);
+    ovInstr = drawOverlay.querySelector('[data-ov="instr"]');
+    ovStat = drawOverlay.querySelector('[data-ov="stat"]');
+    ovFinish = drawOverlay.querySelector('[data-ov="finish"]');
+    ovUndo = drawOverlay.querySelector('[data-ov="undo"]');
+    ovFinish!.addEventListener("click", () => finishDraw());
+    ovUndo!.addEventListener("click", () => undoPoint());
+    drawOverlay.querySelector('[data-ov="cancel"]')!.addEventListener("click", () => { setDraw(false); setRect(false); });
+  }
+  function syncOverlay() {
+    ensureOverlay();
+    if (!drawOverlay) return;
+    const on = drawing || rectMode;
+    drawOverlay!.style.display = on ? "block" : "none";
+    if (!on) return;
+    if (rectMode) {
+      ovInstr!.innerHTML = rectStart
+        ? 'Jetzt die <b>gegenüberliegende Ecke</b> antippen.'
+        : 'Tippe die <b>erste Ecke</b> des Rechtecks.';
+      ovStat!.textContent = "Rechteck-Modus";
+      ovFinish!.style.display = "none";
+      ovUndo!.style.display = "none";
+      return;
+    }
+    ovFinish!.style.display = ""; ovUndo!.style.display = "";
+    const { areaM2, n } = provisionalStats();
+    let instr: string;
+    if (n === 0) instr = 'Tippe auf die Karte, um die <b>1. Ecke</b> zu setzen.';
+    else if (n < 3) instr = `Weiter tippen – noch mindestens <b>${3 - n}</b> Ecke${3 - n === 1 ? "" : "n"}.`;
+    else instr = 'Bereit! <b>Doppelklick</b> oder „Fertig" schließt die Fläche ab.';
+    ovInstr!.innerHTML = instr;
+    const parts = [`${n} Punkt${n === 1 ? "" : "e"} gesetzt`];
+    if (areaM2) parts.push(`${nf(areaM2)} m²`);
+    ovStat!.textContent = parts.join(" · ");
+    ovFinish!.disabled = n < 3;
+    ovUndo!.disabled = n < 1;
+  }
+
+  // ---------- Rechtsklick-Kontextmenü ----------
+  type CtxItem = { label: string; icon?: string; danger?: boolean; act: () => void } | "sep";
+  let ctxEl: HTMLElement | null = null;
+  function ensureCtx() {
+    if (ctxEl || !map) return;
+    ctxEl = document.createElement("div");
+    ctxEl.className = "acker-ctx";
+    ctxEl.style.display = "none";
+    map.getContainer().appendChild(ctxEl);
+    L.DomEvent.disableClickPropagation(ctxEl);
+    L.DomEvent.disableScrollPropagation(ctxEl);
+  }
+  function closeCtx() { if (ctxEl) ctxEl.style.display = "none"; }
+  function openCtx(containerPt: any, items: CtxItem[]) {
+    ensureCtx();
+    if (!ctxEl) return;
+    ctxEl!.innerHTML = "";
+    items.forEach((it) => {
+      if (it === "sep") { const s = document.createElement("div"); s.className = "acker-ctx-sep"; ctxEl!.appendChild(s); return; }
+      const b = document.createElement("button");
+      b.className = "acker-ctx-item" + (it.danger ? " danger" : "");
+      b.innerHTML = (it.icon ? `<i class="bi ${it.icon} me-2"></i>` : "") + `<span>${it.label}</span>`;
+      b.addEventListener("click", () => { closeCtx(); it.act(); });
+      ctxEl!.appendChild(b);
+    });
+    ctxEl!.style.display = "block";
+    const c = map.getContainer();
+    const mw = ctxEl!.offsetWidth, mh = ctxEl!.offsetHeight;
+    let x = containerPt.x + 2, y = containerPt.y + 2;
+    if (x + mw > c.clientWidth) x = c.clientWidth - mw - 6;
+    if (y + mh > c.clientHeight) y = c.clientHeight - mh - 6;
+    ctxEl!.style.left = Math.max(6, x) + "px";
+    ctxEl!.style.top = Math.max(6, y) + "px";
+  }
+  function addPointAt(latlng: any) {
+    pts.push([latlng.lat, latlng.lng]);
+    dots.push(L.circleMarker(latlng, { radius: 4, color: "#22c55e", fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(map));
+    redrawTemp();
+    updateDrawStatus();
+  }
+  function onMapContextMenu(e: any) {
+    if (e.originalEvent) L.DomEvent.preventDefault(e.originalEvent);
+    if (drawing) {
+      openCtx(e.containerPoint, [
+        { label: "Punkt hier hinzufügen", icon: "bi-plus-circle", act: () => addPointAt(e.latlng) },
+        { label: "Fläche abschließen", icon: "bi-check-circle", act: () => finishDraw() },
+        { label: "Letzten Punkt entfernen", icon: "bi-arrow-counterclockwise", act: () => undoPoint() },
+        "sep",
+        { label: "Zeichnen abbrechen", icon: "bi-x-circle", danger: true, act: () => setDraw(false) },
+      ]);
+      return;
+    }
+    if (rectMode) {
+      openCtx(e.containerPoint, [
+        { label: "Rechteck abbrechen", icon: "bi-x-circle", danger: true, act: () => setRect(false) },
+      ]);
+      return;
+    }
+    openCtx(e.containerPoint, [
+      { label: "Fläche hier zeichnen", icon: "bi-pentagon", act: () => { setRect(false); setDraw(true); addPointAt(e.latlng); } },
+      { label: "Rechteck hier beginnen", icon: "bi-bounding-box", act: () => { setDraw(false); setRect(true); onRectClick(e); } },
+    ]);
+  }
+  function onFieldContextMenu(fl: any, e: any) {
+    L.DomEvent.stop(e);
+    if (e.originalEvent) L.DomEvent.preventDefault(e.originalEvent);
+    if (drawing || rectMode) return;
+    select(fl._key);
+    openCtx(e.containerPoint, [
+      { label: `„${fl.name || "Fläche"}" bearbeiten`, icon: "bi-pencil", act: () => select(fl._key) },
+      { label: "Als PDF exportieren", icon: "bi-file-earmark-pdf", act: () => void exportFieldPdf(fl) },
+      "sep",
+      { label: "Fläche löschen", icon: "bi-trash", danger: true, act: () => void removeField(fl._key) },
+    ]);
   }
 
   // ---------- Suche (Nominatim) ----------
@@ -673,7 +815,12 @@ export function initAcker(container: Element | null, services: Services): void {
     ).addTo(map);
     map.on("click", onMapClick);
     map.on("click", onRectClick);
+    map.on("click", closeCtx);
     map.on("mousemove", onRectMove);
+    map.on("contextmenu", onMapContextMenu);
+    map.on("movestart zoomstart", closeCtx);
+    // Browser-Kontextmenü auf der Karte unterdrücken (wir zeigen unser eigenes).
+    map.getContainer().addEventListener("contextmenu", (ev) => ev.preventDefault());
     // Doppelklick schließt das Polygon ab (nur während des Zeichnens).
     map.on("dblclick", () => { if (drawing) finishDraw(); });
 
@@ -688,6 +835,7 @@ export function initAcker(container: Element | null, services: Services): void {
     el('[data-role="acker-go"]')!.addEventListener("click", geocode);
     (el('[data-role="acker-q"]') as HTMLInputElement).addEventListener("keydown", (e: any) => { if (e.key === "Enter") geocode(); });
     document.addEventListener("keydown", (e: any) => {
+      if (e.key === "Escape") closeCtx();
       if (rectMode && e.key === "Escape") { setRect(false); return; }
       if (!drawing) return;
       if (e.key === "Backspace") { e.preventDefault(); undoPoint(); }
@@ -740,11 +888,12 @@ function renderShell(): string {
     .acker-wrap{display:flex;gap:0;height:calc(100vh - 80px);min-height:460px;border:1px solid var(--border-1);border-radius:12px;overflow:hidden;background:var(--surface-1,#0f172a)}
     .acker-side{width:340px;min-width:300px;display:flex;flex-direction:column;border-right:1px solid var(--border-1);overflow:hidden}
     .acker-scroll{overflow-y:auto;padding:12px 14px;flex:1}
-    .acker-map{flex:1;min-height:300px}
+    .acker-map{flex:1;min-height:300px;position:relative}
     .acker-search{display:flex;gap:6px;margin-bottom:10px}
     .acker-search input{flex:1}
     .acker-tools{display:flex;gap:8px;margin-bottom:4px}
     .acker-tools .btn{flex:1;display:inline-flex;align-items:center;justify-content:center}
+    .acker-hint{font-size:11.5px;color:var(--text-dim,#94a3b8);margin:2px 0 8px;line-height:1.4}
     .acker-banner{display:none;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:var(--text);padding:10px 12px;border-radius:8px;font-size:12.5px;margin:8px 0 10px;line-height:1.45}
     .acker-banner .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
     .acker-drawstat{margin-top:8px;font-weight:700;color:#16a34a;font-size:13px}
@@ -777,6 +926,26 @@ function renderShell(): string {
     .acker-standort-dot{display:block;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
     .acker-standort-label{background:rgba(255,255,255,.92);color:#1f2937;border:1px solid #d97706;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.25)}
     .acker-standort-label::before{display:none}
+    /* On-Map-Overlay (Hinweis + Aktionen direkt auf der Karte) */
+    .acker-ov{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1000;
+      background:rgba(15,23,42,.92);color:#fff;border:1px solid rgba(34,197,94,.55);
+      border-radius:12px;padding:10px 14px;box-shadow:0 6px 24px rgba(0,0,0,.4);
+      max-width:min(92%,460px);text-align:center;backdrop-filter:blur(4px)}
+    .acker-ov-instr{font-size:13.5px;line-height:1.4}
+    .acker-ov-instr b{color:#4ade80}
+    .acker-ov-stat{font-size:11.5px;color:#cbd5e1;margin-top:3px}
+    .acker-ov-btns{display:flex;gap:7px;justify-content:center;margin-top:9px;flex-wrap:wrap}
+    .acker-ov-btns .btn:disabled{opacity:.45}
+    /* Rechtsklick-Kontextmenü */
+    .acker-ctx{position:absolute;z-index:1100;min-width:208px;background:#0f172a;
+      border:1px solid var(--border-1,#334155);border-radius:10px;padding:5px;
+      box-shadow:0 10px 30px rgba(0,0,0,.5)}
+    .acker-ctx-item{display:flex;align-items:center;width:100%;border:0;background:transparent;
+      color:#e2e8f0;font-size:13px;text-align:left;padding:8px 10px;border-radius:7px;cursor:pointer}
+    .acker-ctx-item:hover{background:rgba(34,197,94,.18)}
+    .acker-ctx-item.danger{color:#f87171}
+    .acker-ctx-item.danger:hover{background:rgba(248,113,113,.16)}
+    .acker-ctx-sep{height:1px;background:var(--border-1,#334155);margin:4px 6px}
     @media(max-width:760px){.acker-wrap{flex-direction:column;height:auto}.acker-side{width:100%;max-height:46vh}.acker-map{height:52vh}}
   </style>
   <section class="calc-section">
@@ -791,6 +960,7 @@ function renderShell(): string {
             <button class="btn btn-psm-primary" data-role="acker-draw"><i class="bi bi-pentagon me-1"></i>Fläche zeichnen</button>
             <button class="btn btn-psm-secondary-outline" data-role="acker-rect"><i class="bi bi-bounding-box me-1"></i>Rechteck</button>
           </div>
+          <div class="acker-hint">💡 <b>Rechtsklick</b> auf die Karte öffnet ein Menü. Beim Zeichnen führt dich der grüne Hinweis oben auf der Karte.</div>
           <div class="acker-banner" data-role="acker-rectbanner">
             <div><b>Rechteck aufziehen:</b> erste Ecke klicken/tippen, dann die gegenüberliegende Ecke.</div>
             <div class="row">
