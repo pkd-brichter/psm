@@ -24,6 +24,7 @@ import {
 } from "@scripts/core/autoRefresh";
 import { gpsLock } from "@scripts/core/asyncLock";
 import { toast } from "@scripts/core/toast";
+import { listAckerflaechen } from "@scripts/core/storage/sqlite";
 
 interface Services {
   state: {
@@ -696,6 +697,80 @@ function updateGpsPager(
   });
 }
 
+// Acker-Flächen (eigene Tabelle) werden in der Standort-Liste NUR mit-angezeigt
+// (kein Schreiben in GPS-Punkte → Gewächshaus-Daten bleiben unangetastet).
+let ackerFields: any[] = [];
+
+async function loadAckerFields(): Promise<void> {
+  if (evaluateAvailability(getState().app) !== "ok") {
+    ackerFields = [];
+    return;
+  }
+  try {
+    const r = await listAckerflaechen();
+    ackerFields = Array.isArray(r?.rows) ? r.rows : [];
+  } catch {
+    ackerFields = [];
+  }
+  if (refs) {
+    updateListUi(getState(), evaluateAvailability(getState().app));
+  }
+}
+
+function formatAreaHa(qm: number): string {
+  if (!Number.isFinite(qm) || qm <= 0) return "";
+  const ha = qm / 10000;
+  return `${ha.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha`;
+}
+function ackerCentroid(latlngs: any[]): { lat: number; lng: number } | null {
+  const pts = (latlngs || []).filter(
+    (p: any) => Number.isFinite(p?.[0]) && Number.isFinite(p?.[1]),
+  );
+  if (!pts.length) return null;
+  let la = 0,
+    lo = 0;
+  pts.forEach((p: any) => { la += p[0]; lo += p[1]; });
+  return { lat: la / pts.length, lng: lo / pts.length };
+}
+
+/** Acker-Flächen als zusätzliche (lesende) Zeilen in der Standort-Tabelle. */
+function renderAckerRows(fields: any[]): string {
+  if (!fields.length) return "";
+  return fields
+    .map((f) => {
+      const c = ackerCentroid(f.latlngs);
+      const coords = c
+        ? `<div>${formatCoordinate(c.lat)}</div><div>${formatCoordinate(c.lng)}</div>`
+        : '<span class="text-muted">–</span>';
+      const ha = formatAreaHa(Number(f.areaQm));
+      const sub = [ha ? `🌱 ${ha}` : "", f.kultur ? escapeHtml(String(f.kultur)) : ""]
+        .filter(Boolean)
+        .join(" · ");
+      const updated = f.updatedAt ? formatTimestamp(f.updatedAt) : "";
+      return `
+        <tr data-acker-id="${escapeAttr(f.id)}">
+          <td>
+            <div class="fw-semibold">${escapeHtml(f.name || "Fläche")}<span class="badge bg-secondary ms-2">Freiland-Fläche</span></div>
+            ${sub ? `<div class="text-muted small">${sub}</div>` : ""}
+          </td>
+          <td class="font-monospace">${coords}</td>
+          <td>
+            <div><span class="badge-psm badge-psm-neutral">Acker-Planer</span></div>
+            <div class="text-muted small">${updated}</div>
+          </td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-success" data-action="open-acker">
+                Im Acker-Planer
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("\n");
+}
+
 function renderPointRows(points: GpsPoint[], activeId: string | null): string {
   if (!points.length) {
     return "";
@@ -703,9 +778,20 @@ function renderPointRows(points: GpsPoint[], activeId: string | null): string {
   return points
     .map((point) => {
       const isActive = point.id === activeId;
-      const description = point.description
-        ? `<div class="text-muted small">${escapeHtml(point.description)}</div>`
-        : "";
+      const typeBadge =
+        point.kind === "gewaechshaus"
+          ? '<span class="badge bg-info ms-2">Gewächshaus</span>'
+          : point.kind === "freiland"
+            ? '<span class="badge bg-secondary ms-2">Freiland</span>'
+            : "";
+      const areaTxt =
+        point.nutzflaecheQm != null && Number.isFinite(Number(point.nutzflaecheQm))
+          ? `📐 ${Number(point.nutzflaecheQm).toLocaleString("de-DE")} m²`
+          : "";
+      const subParts = [areaTxt, point.description ? escapeHtml(point.description) : ""]
+        .filter(Boolean)
+        .join(" · ");
+      const description = subParts ? `<div class="text-muted small">${subParts}</div>` : "";
       const source = point.source
         ? `<span class="badge-psm badge-psm-neutral">${escapeHtml(point.source)}</span>`
         : '<span class="text-muted">–</span>';
@@ -723,7 +809,7 @@ function renderPointRows(points: GpsPoint[], activeId: string | null): string {
       return `
         <tr data-point-id="${escapeAttr(point.id)}">
           <td>
-            <div class="fw-semibold">${escapeHtml(point.name || "Ohne Namen")}${activeBadge}</div>
+            <div class="fw-semibold">${escapeHtml(point.name || "Ohne Namen")}${typeBadge}${activeBadge}</div>
             ${description}
           </td>
           <td class="font-monospace">
@@ -765,8 +851,9 @@ function updateListUi(state: AppState, availability: AvailabilityStatus): void {
   const canDisplay = availability === "ok";
   if (refs.summaryLabel) {
     const count = getGpsSliceItems(gpsState).length;
+    const flCount = ackerFields.length;
     refs.summaryLabel.textContent = canDisplay
-      ? `${count} Punkt${count === 1 ? "" : "e"} gespeichert`
+      ? `${count} Punkt${count === 1 ? "" : "e"}${flCount ? ` · ${flCount} Fläche${flCount === 1 ? "" : "n"}` : ""}`
       : "Funktion derzeit nicht verfügbar";
   }
   if (!canDisplay) {
@@ -791,11 +878,15 @@ function updateListUi(state: AppState, availability: AvailabilityStatus): void {
   }
 
   if (refs.listBody) {
-    const { items } = getGpsPageMeta(getGpsSliceItems(gpsState));
-    refs.listBody.innerHTML = renderPointRows(items, gpsState.activePointId);
+    const meta = getGpsPageMeta(getGpsSliceItems(gpsState));
+    // Acker-Flächen nur auf der letzten Seite anhängen (sonst auf jeder Seite).
+    const isLastPage = meta.start + meta.items.length >= meta.total;
+    refs.listBody.innerHTML =
+      renderPointRows(meta.items, gpsState.activePointId) +
+      (isLastPage ? renderAckerRows(ackerFields) : "");
   }
   if (refs.emptyState) {
-    const hasPoints = getGpsSliceItems(gpsState).length > 0;
+    const hasPoints = getGpsSliceItems(gpsState).length > 0 || ackerFields.length > 0;
     refs.emptyState.classList.toggle("d-none", hasPoints);
     if (!hasPoints && gpsState.initialized) {
       refs.emptyState.innerHTML = `
@@ -954,6 +1045,7 @@ async function refreshPoints(
   }
   try {
     await loadGpsPoints();
+    await loadAckerFields();
     if (notify) {
       setMessage("GPS-Punkte aktualisiert.", "success");
     }
@@ -1279,6 +1371,11 @@ function attachEventListeners(): void {
       case "reload-points":
         void refreshPoints({ notify: true, reason: "manual" });
         break;
+      case "open-acker":
+        document
+          .querySelector<HTMLButtonElement>('.nav-btn[data-area="acker"]')
+          ?.click();
+        break;
       case "sync-active":
         void handleSyncActive();
         break;
@@ -1378,6 +1475,11 @@ export function initGps(container: Element | null, services: Services): void {
   const handleStateChange = (state: AppState, prevState: AppState): void => {
     const availability = evaluateAvailability(state.app);
     const gpsState = state.gps;
+    // Beim Betreten des GPS-Bereichs Acker-Flächen frisch laden (zeigt neu
+    // gezeichnete Flächen sofort neben den Gewächshäusern).
+    if (state.app.activeSection === "gps" && prevState.app.activeSection !== "gps") {
+      void loadAckerFields();
+    }
     updateAvailabilityUi(availability);
     updateListUi(state, availability);
     updateBusyUi(gpsState, availability);
