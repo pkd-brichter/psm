@@ -45,8 +45,8 @@ interface InitFotosOptions {
     entryUuid?: string | null;
     kategorie?: string | null;
   };
-  /** Mobil: eigener „Senden"-Button (ZIP ins Share-Sheet). */
-  onSend?: () => void | Promise<void>;
+  /** Mobil: schlanke, aufnahme-zuerst Oberfläche (Aufnahme-Karte + Galerie). */
+  mobile?: boolean;
 }
 
 const GRUPPEN: { key: string; label: string }[] = [
@@ -83,24 +83,31 @@ function buildKatOptions(selected: string | null | undefined): string {
   }).join("");
 }
 
-function buildFilterChips(activeKey: string): string {
-  const active = (key: string) => (key === activeKey ? " is-active" : "");
+function chipHtml(key: string, label: string, activeKey: string): string {
+  const active = key === activeKey ? " is-active" : "";
+  return `<button type="button" class="fotos-chip${active}" data-filter="${key}">${escapeHtml(
+    t(label),
+  )}</button>`;
+}
+
+/**
+ * Filter-Chips. `flat` = eine einzige (horizontal scrollbare) Reihe ohne
+ * Gruppen-Überschriften – für die schlanke Mobil-Galerie. Sonst nach Gruppen.
+ */
+function buildFilterChips(activeKey: string, flat = false): string {
+  const allChip = chipHtml("", "Alle", activeKey);
+  if (flat) {
+    return allChip + KATEGORIEN.map((k) => chipHtml(k.key, k.label, activeKey)).join("");
+  }
   const groups = GRUPPEN.map((g) => {
     const chips = KATEGORIEN.filter((k) => k.group === g.key)
-      .map(
-        (k) =>
-          `<button type="button" class="fotos-chip${active(k.key)}" data-filter="${k.key}">${escapeHtml(
-            t(k.label),
-          )}</button>`,
-      )
+      .map((k) => chipHtml(k.key, k.label, activeKey))
       .join("");
     return `<div class="fotos-filtergroup"><span class="fotos-filtercap">${escapeHtml(
       t(g.label),
     )}</span>${chips}</div>`;
   }).join("");
-  return `<button type="button" class="fotos-chip${active(
-    "",
-  )}" data-filter="">${escapeHtml(t("Alle"))}</button>${groups}`;
+  return allChip + groups;
 }
 
 function genUuid(): string {
@@ -207,6 +214,7 @@ export function initFotos(
   if (!(container instanceof HTMLElement)) return;
   const host = container;
   const archive = Boolean(options.archiveMode);
+  const mobile = Boolean(options.mobile);
 
   let lastKat = "kultur";
   let sortDir: "desc" | "asc" = "desc";
@@ -217,11 +225,6 @@ export function initFotos(
     /* ignore */
   }
 
-  const sendBtn = options.onSend
-    ? `<button type="button" class="fotos-send btn btn-psm-primary" data-role="fotos-send"><i class="bi bi-send"></i> ${escapeHtml(
-        t("Senden"),
-      )}</button>`
-    : "";
   const searchBox = archive
     ? `<input type="search" class="form-control form-control-sm fotos-search" data-role="fotos-search" placeholder="${escapeHtml(
         t("Fotos durchsuchen…"),
@@ -249,19 +252,56 @@ export function initFotos(
   const selected = new Set<number>();
   const GALLERY_LOAD_CAP = 5000;
 
-  host.innerHTML = `
+  const cameraLabel = `<label class="fotos-add fotos-add-hero btn btn-psm-primary">
+          <i class="bi bi-camera-fill"></i> ${escapeHtml(t("Foto aufnehmen"))}
+          <input type="file" accept="image/*" capture="environment" hidden data-role="fotos-camera" />
+        </label>`;
+  const galleryLabel = `<label class="fotos-add btn btn-psm-secondary-outline">
+          <i class="bi bi-images"></i> ${escapeHtml(t("Aus Galerie"))}
+          <input type="file" accept="image/*" multiple hidden data-role="fotos-gallery-input" />
+        </label>`;
+  const emptyHtml = `<div class="fotos-empty" data-role="fotos-empty">${escapeHtml(
+    t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".'),
+  )}</div>`;
+
+  if (mobile) {
+    // Aufnahme-zuerst: eine klare „Aufnahme-Karte" (Kategorie-Auswahl + große
+    // Buttons) ganz oben; Galerie + Filter deutlich darunter abgesetzt.
+    host.innerHTML = `
+    <div class="fotos-wrap fotos-wrap--mobile">
+      <div class="fotos-capture">
+        <label class="fotos-capture-cat">
+          <span>${escapeHtml(t("Kategorie für neue Fotos"))}</span>
+          <select class="form-select" data-role="fotos-capture-kat">${buildKatOptions(captureKat)}</select>
+        </label>
+        <div class="fotos-capture-actions">
+          ${cameraLabel}
+          ${galleryLabel}
+        </div>
+        <span class="fotos-hint" data-role="fotos-status"></span>
+      </div>
+      <div class="fotos-galhead" data-role="fotos-galhead" hidden>
+        <span class="fotos-galhead-title">${escapeHtml(t("Galerie"))}</span>
+        <span class="fotos-count" data-role="fotos-count"></span>
+        <span class="fotos-controls-spacer"></span>
+        <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
+          t("Sortierung umschalten"),
+        )}"></button>
+      </div>
+      <div class="fotos-filter fotos-filter--scroll" data-role="fotos-filter" hidden>${buildFilterChips(
+        activeFilter,
+        true,
+      )}</div>
+      <div class="fotos-gallery" data-role="fotos-gallery"></div>
+      ${emptyHtml}
+    </div>`;
+  } else {
+    host.innerHTML = `
     <div class="fotos-wrap">
       <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
       <div class="fotos-bar">
-        <label class="fotos-add btn btn-psm-primary">
-          <i class="bi bi-camera-fill"></i> ${escapeHtml(t("Foto aufnehmen"))}
-          <input type="file" accept="image/*" capture="environment" hidden data-role="fotos-camera" />
-        </label>
-        <label class="fotos-add btn btn-psm-secondary-outline">
-          <i class="bi bi-images"></i> ${escapeHtml(t("Aus Galerie"))}
-          <input type="file" accept="image/*" multiple hidden data-role="fotos-gallery-input" />
-        </label>
-        ${sendBtn}
+        ${cameraLabel}
+        ${galleryLabel}
         <span class="fotos-hint" data-role="fotos-status"></span>
       </div>
       <div class="fotos-target">${escapeHtml(t("Neue Fotos →"))} <b data-role="fotos-target"></b></div>
@@ -276,14 +316,14 @@ export function initFotos(
       </div>
       <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
       <div class="fotos-gallery" data-role="fotos-gallery"></div>
-      <div class="fotos-empty" data-role="fotos-empty">${escapeHtml(
-        t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".'),
-      )}</div>
+      ${emptyHtml}
     </div>`;
+  }
 
   const cameraInput = host.querySelector<HTMLInputElement>('[data-role="fotos-camera"]');
   const galleryInput = host.querySelector<HTMLInputElement>('[data-role="fotos-gallery-input"]');
-  const sendButton = host.querySelector<HTMLElement>('[data-role="fotos-send"]');
+  const captureKatSel = host.querySelector<HTMLSelectElement>('[data-role="fotos-capture-kat"]');
+  const galheadEl = host.querySelector<HTMLElement>('[data-role="fotos-galhead"]');
   const targetEl = host.querySelector<HTMLElement>('[data-role="fotos-target"]');
   const gallery = host.querySelector<HTMLElement>('[data-role="fotos-gallery"]');
   const emptyEl = host.querySelector<HTMLElement>('[data-role="fotos-empty"]');
@@ -300,6 +340,9 @@ export function initFotos(
   };
   const updateTarget = () => {
     if (targetEl) targetEl.textContent = kategorieLabel(captureKat);
+    if (captureKatSel && captureKatSel.value !== captureKat) {
+      captureKatSel.value = captureKat;
+    }
   };
   const updateSortBtn = () => {
     if (!sortBtn) return;
@@ -472,6 +515,13 @@ export function initFotos(
     const items = getFiltered();
     updateCount(items.length);
     updateChipCounts();
+    // Mobil: Galerie-Kopf + Filter erst zeigen, wenn überhaupt Fotos da sind –
+    // der Erststart bleibt so auf die Aufnahme-Karte fokussiert.
+    if (mobile) {
+      const hasPhotos = dbTotal > 0;
+      if (galheadEl) galheadEl.hidden = !hasPhotos;
+      if (filterBar) filterBar.hidden = !hasPhotos;
+    }
     if (emptyEl) {
       emptyEl.style.display = items.length === 0 ? "block" : "none";
       emptyEl.textContent = !allItems.length
@@ -565,14 +615,27 @@ export function initFotos(
   };
   wireInput(cameraInput);
   wireInput(galleryInput);
-  sendButton?.addEventListener("click", () => void options.onSend?.());
+
+  // Mobil: das Kategorie-Dropdown ist das Aufnahme-Ziel (entkoppelt vom Galerie-
+  // Filter) – so ist beim Tippen auf „Foto aufnehmen" klar, wohin das Foto kommt.
+  captureKatSel?.addEventListener("change", () => {
+    captureKat = captureKatSel.value || captureKat;
+    try {
+      localStorage.setItem(LAST_KAT_KEY, captureKat);
+    } catch {
+      /* ignore */
+    }
+    updateTarget();
+  });
 
   // ---- Kategorie-Chips (Filter + Aufnahme-Ziel) -----------------------------
   filterBar?.addEventListener("click", (event) => {
     const btn = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(".fotos-chip");
     if (!btn) return;
     activeFilter = btn.dataset.filter || "";
-    if (activeFilter) {
+    // Desktop: Chip ist Filter UND Aufnahme-Ziel. Mobil: reiner Galerie-Filter
+    // (Aufnahme-Ziel steuert das Dropdown – sonst „springt" das Ziel beim Stöbern).
+    if (!mobile && activeFilter) {
       captureKat = activeFilter;
       try {
         localStorage.setItem(LAST_KAT_KEY, captureKat);

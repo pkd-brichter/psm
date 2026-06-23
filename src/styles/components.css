@@ -1625,6 +1625,46 @@ html.qs-mode .card-dark {
 .fotos-sort:hover { border-color: var(--border-2); }
 .fotos-count { font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
 
+/* ---- Mobil: aufnahme-zuerst Oberfläche (klar getrennt von der Galerie) ---- */
+.fotos-capture {
+  background: var(--surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.fotos-capture-cat { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.fotos-capture-cat > span {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.fotos-capture-actions { display: flex; flex-direction: column; gap: 10px; }
+.fotos-capture .fotos-add { width: 100%; justify-content: center; }
+.fotos-add-hero { font-size: 1.05rem; padding-top: 13px; padding-bottom: 13px; }
+.fotos-capture .fotos-hint:empty { display: none; }
+
+/* Galerie-Kopf (mobil): Titel + Zähler + Sortierung in einer Zeile */
+.fotos-galhead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.fotos-galhead[hidden] { display: none; }
+.fotos-galhead-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+
+/* Filter-Chips als EINE horizontal scrollbare Reihe (kein „Wall of Chips") */
+.fotos-filter--scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  gap: 8px;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.fotos-filter--scroll[hidden] { display: none; }
+.fotos-filter--scroll::-webkit-scrollbar { display: none; }
+.fotos-filter--scroll .fotos-chip { flex: 0 0 auto; padding: 7px 14px; font-size: 0.85rem; }
+
 /* Auswahl-Aktionsleiste (sticky oben) */
 .fotos-bulkbar {
   position: sticky;

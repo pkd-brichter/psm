@@ -409,9 +409,11 @@ async function start(): Promise<void> {
   const calcContainer = document.querySelector('[data-feature="calculation"]');
   initCalculation(calcContainer, services);
 
-  // Fotos-Bereich mounten – mit eigenem Schnell-Senden (ZIP) direkt im Bereich.
+  // Fotos-Bereich mounten – schlanke, aufnahme-zuerst Oberfläche. Das Senden
+  // läuft über den globalen „Teilen"-Button oben (sendet Erfassungen + Fotos als
+  // ZIP); ein zweiter „Senden"-Button im Foto-Bereich wäre nur Verwirrung.
   const fotosContainer = document.querySelector('[data-feature="fotos"]');
-  initFotos(fotosContainer, services, { onSend: () => handleShare() });
+  initFotos(fotosContainer, services, { mobile: true });
 
   // Datenbank verbinden (löst Reload der Lookups in der Maske aus).
   await connectDatabase();
