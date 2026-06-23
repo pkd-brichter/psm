@@ -132,6 +132,8 @@ const STYLES = `
     .lager-bestand{font-weight:700}
     .lager-bestand.bad{color:#ef4444}
     .lager-bestand.low{color:#f59e0b}
+    .lager-row-add{border:1px solid var(--border-1,rgba(255,255,255,.14));background:transparent;color:var(--color-primary,#22c55e);border-radius:8px;width:30px;height:30px;cursor:pointer;line-height:1;font-size:.95rem;display:inline-flex;align-items:center;justify-content:center}
+    .lager-row-add:hover{background:rgba(34,197,94,.12);border-color:var(--color-primary,#22c55e)}
 
     .lager-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:999px;font-size:.74rem;font-weight:600;white-space:nowrap}
     .lager-badge::before{content:"";width:7px;height:7px;border-radius:999px;background:currentColor}
@@ -190,8 +192,11 @@ function renderShell(): string {
             <div class="lager-form-grid">
               <div class="lager-field col-2">
                 <label>Mittel <span class="lager-req">*</span></label>
-                <input name="mittel" list="lager-mittel-options" autocomplete="off" required />
-                <datalist id="lager-mittel-options"></datalist>
+                <select name="mittel" data-role="lager-mittel-select" required>
+                  <option value="">— Mittel wählen —</option>
+                  <option value="__new__">➕ Neues Mittel …</option>
+                </select>
+                <input name="mittelNew" data-role="lager-mittel-new" placeholder="Name des neuen Mittels" autocomplete="off" hidden style="margin-top:6px" />
               </div>
               <div class="lager-field">
                 <label>Typ</label>
@@ -256,6 +261,7 @@ function renderShell(): string {
                 <th>Status</th>
                 <th>Zulassung bis</th>
                 <th>Nächster Ablauf</th>
+                <th class="num"></th>
               </tr></thead>
               <tbody data-role="lager-uebersicht"></tbody>
             </table>
@@ -296,9 +302,16 @@ export function initLager(container: Element | null, services: Services): void {
   const searchInput = container.querySelector<HTMLInputElement>(
     '[data-role="lager-search"]'
   );
-  const mittelList = container.querySelector<HTMLDataListElement>(
-    "#lager-mittel-options"
+  const mittelSelect = container.querySelector<HTMLSelectElement>(
+    '[data-role="lager-mittel-select"]'
   );
+  const mittelNewInput = container.querySelector<HTMLInputElement>(
+    '[data-role="lager-mittel-new"]'
+  );
+  const einheitInput = container.querySelector<HTMLInputElement>(
+    '[name="einheit"]'
+  );
+  const kennrInput = container.querySelector<HTMLInputElement>('[name="kennr"]');
   const emptyHint = container.querySelector<HTMLElement>(
     '[data-role="lager-empty-hint"]'
   );
@@ -363,11 +376,11 @@ export function initLager(container: Element | null, services: Services): void {
     }
 
     if (!lastUeb.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="lager-empty">Noch keine Mittel. Erfasse oben einen Zugang oder dokumentiere Anwendungen in „Neu erfassen".</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="lager-empty">Noch keine Mittel. Erfasse oben einen Zugang oder dokumentiere Anwendungen in „Neu erfassen".</td></tr>`;
       return;
     }
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="lager-empty">Keine Treffer für „${escapeHtml(
+      tbody.innerHTML = `<tr><td colspan="8" class="lager-empty">Keine Treffer für „${escapeHtml(
         term
       )}".</td></tr>`;
       return;
@@ -395,6 +408,11 @@ export function initLager(container: Element | null, services: Services): void {
           <td class="lager-muted">${
             r.naechsterAblauf ? fmtDate(r.naechsterAblauf) : ""
           }</td>
+          <td class="num"><button type="button" class="lager-row-add" data-add="${escapeAttr(
+            r.name
+          )}" title="Zugang für „${escapeAttr(
+            r.name
+          )}" erfassen" aria-label="Zugang erfassen"><i class="bi bi-plus-lg"></i></button></td>
         </tr>`;
       })
       .join("");
@@ -448,21 +466,53 @@ export function initLager(container: Element | null, services: Services): void {
   };
 
   const fillMittelOptions = (): void => {
-    if (!mittelList) return;
-    mittelList.innerHTML = Array.from(mittelIndex.entries())
-      .sort((a, b) => a[0].localeCompare(b[0], "de"))
-      .map(
-        ([name, m]) =>
-          `<option value="${escapeAttr(name)}" data-kennr="${escapeAttr(
-            m.kennr || ""
-          )}" data-einheit="${escapeAttr(m.einheit || "")}" data-wirkstoff="${escapeAttr(
-            m.wirkstoff || ""
-          )}"></option>`
-      )
-      .join("");
+    if (!mittelSelect) return;
+    const prev = mittelSelect.value;
+    const names = Array.from(mittelIndex.keys()).sort((a, b) =>
+      a.localeCompare(b, "de")
+    );
+    mittelSelect.innerHTML =
+      `<option value="">— Mittel wählen —</option>` +
+      names
+        .map((n) => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`)
+        .join("") +
+      `<option value="__new__">➕ Neues Mittel …</option>`;
+    // Vorherige Auswahl beibehalten, falls noch gültig.
+    if (prev && (prev === "__new__" || names.includes(prev))) {
+      mittelSelect.value = prev;
+    }
   };
 
-  const setFormOpen = (open: boolean): void => {
+  // Einheit/Zulassungsnr. aus der Mittel-Auswahl automatisch übernehmen; bei
+  // „Neues Mittel" das Freitextfeld einblenden.
+  const onMittelChange = (): void => {
+    if (!mittelSelect) return;
+    const isNew = mittelSelect.value === "__new__";
+    if (mittelNewInput) {
+      mittelNewInput.hidden = !isNew;
+      if (isNew) mittelNewInput.focus();
+    }
+    const m = mittelIndex.get(mittelSelect.value);
+    if (m) {
+      if (einheitInput && m.einheit) einheitInput.value = m.einheit;
+      if (kennrInput && m.kennr) kennrInput.value = m.kennr;
+    }
+  };
+  mittelSelect?.addEventListener("change", onMittelChange);
+
+  // Zugang direkt für ein vorhandenes Mittel erfassen (Zeilen-Button „+").
+  const openFormForMittel = (name: string): void => {
+    setFormOpen(true, false);
+    if (mittelSelect) {
+      mittelSelect.value = name;
+      onMittelChange();
+    }
+    formPanel
+      ?.querySelector<HTMLInputElement>('[name="menge"]')
+      ?.focus();
+  };
+
+  const setFormOpen = (open: boolean, autoFocus = true): void => {
     if (!formPanel) return;
     formPanel.hidden = !open;
     if (addToggle) {
@@ -471,9 +521,11 @@ export function initLager(container: Element | null, services: Services): void {
         : `<i class="bi bi-plus-lg me-1"></i>Zugang erfassen`;
     }
     if (open) {
-      formPanel
-        .querySelector<HTMLInputElement>('[name="mittel"]')
-        ?.focus();
+      if (autoFocus) {
+        formPanel
+          .querySelector<HTMLSelectElement>('[name="mittel"]')
+          ?.focus();
+      }
       formPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   };
@@ -530,6 +582,14 @@ export function initLager(container: Element | null, services: Services): void {
 
   searchInput?.addEventListener("input", () => renderUebersicht());
 
+  // Zeilen-Aktion „+": Zugang für genau dieses (vorhandene) Mittel erfassen.
+  tbody?.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement)?.closest<HTMLElement>("[data-add]");
+    if (!btn) return;
+    const name = btn.getAttribute("data-add") || "";
+    if (name) openFormForMittel(name);
+  });
+
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (getActiveDriverKey() !== "sqlite") {
@@ -537,10 +597,14 @@ export function initLager(container: Element | null, services: Services): void {
       return;
     }
     const fd = new FormData(form);
-    const mittelName = String(fd.get("mittel") || "").trim();
+    const sel = String(fd.get("mittel") || "").trim();
+    const mittelName =
+      sel === "__new__"
+        ? String(fd.get("mittelNew") || "").trim()
+        : sel;
     const menge = Number(String(fd.get("menge") || "").replace(",", "."));
     if (!mittelName || !Number.isFinite(menge)) {
-      toast.warning("Mittel und Menge angeben.");
+      toast.warning("Bitte ein Mittel wählen und die Menge angeben.");
       return;
     }
     const preisRaw = String(fd.get("preis") || "").trim();
@@ -560,25 +624,13 @@ export function initLager(container: Element | null, services: Services): void {
       });
       await persistSqliteDatabaseFile().catch(() => {});
       form.reset();
+      onMittelChange();
       setFormOpen(false);
       toast.success("Bewegung gespeichert.");
       await refresh();
     } catch {
       toast.warning("Speichern fehlgeschlagen.");
     }
-  });
-
-  // Einheit/Zulassungsnr. aus der Mittel-Auswahl automatisch übernehmen
-  const mittelInput = container.querySelector<HTMLInputElement>(
-    '[name="mittel"]'
-  );
-  mittelInput?.addEventListener("change", () => {
-    const m = mittelIndex.get(mittelInput.value);
-    if (!m) return;
-    const eInp = container.querySelector<HTMLInputElement>('[name="einheit"]');
-    const kInp = container.querySelector<HTMLInputElement>('[name="kennr"]');
-    if (eInp && m.einheit) eInp.value = m.einheit;
-    if (kInp && m.kennr) kInp.value = m.kennr;
   });
 
   // Aktualisieren, sobald der Lager-Bereich aktiv wird
