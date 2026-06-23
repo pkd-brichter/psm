@@ -5,6 +5,8 @@
  */
 export const DE_PL: Record<string, string> = {
   "Neue Fotos →": "Nowe zdjęcia →",
+  "Kategorie für neue Fotos": "Kategoria dla nowych zdjęć",
+  "Galerie": "Galeria",
   "Noch keine Fotos. Kategorie wählen und „Foto aufnehmen\".": "Brak zdjęć. Wybierz kategorię i „Zrób zdjęcie\".",
   "Heute": "Dziś",
   "Gestern": "Wczoraj",
