@@ -964,6 +964,14 @@ export async function bulkUpdateFotoKategorie(
   return await callWorker("bulkUpdateFotoKategorie", { ids, kategorie });
 }
 
+export async function bulkUpdateFotos(
+  ids: number[],
+  patch: { kategorie?: string | null; standort?: string | null; kultur?: string | null }
+): Promise<{ success: boolean; updated: number }> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("bulkUpdateFotos", { ids, patch });
+}
+
 export async function exportFotosByIds(
   ids: number[]
 ): Promise<{ items: (FotoMeta & { data: string })[] }> {

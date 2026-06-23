@@ -15,6 +15,7 @@ import {
   deleteFoto,
   deleteFotosByIds,
   bulkUpdateFotoKategorie,
+  bulkUpdateFotos,
   exportFotosByIds,
   updateFoto,
   setFotoThumb,
@@ -67,10 +68,6 @@ const KATEGORIEN: { key: string; label: string; group: string; icon: string }[] 
 function kategorieLabel(key: string | null | undefined): string {
   if (!key) return "";
   return t(KATEGORIEN.find((k) => k.key === key)?.label || key);
-}
-
-function kategorieIcon(key: string | null | undefined): string {
-  return KATEGORIEN.find((k) => k.key === key)?.icon || "bi-tag";
 }
 
 function buildKatOptions(selected: string | null | undefined): string {
@@ -251,7 +248,6 @@ export function initFotos(
   if (!(container instanceof HTMLElement)) return;
   const host = container;
   const archive = Boolean(options.archiveMode);
-  const mobile = Boolean(options.mobile);
 
   let lastKat = "kultur";
   let sortDir: "desc" | "asc" = "desc";
@@ -318,57 +314,56 @@ export function initFotos(
     t('Noch keine Fotos. Kategorie wählen und „Foto aufnehmen".'),
   )}</div>`;
 
-  // Aufnahme-zuerst aus EINER Struktur (Desktop + Mobil): klare „Aufnahme-Karte"
-  // ganz oben (Kategorie-Auswahl + große Buttons), darunter deutlich abgesetzt der
-  // Galerie-Kopf, EINE Filter-Reihe (keine Chip-Wand) und das Bildraster.
-  //  - Desktop legt die Karte breit aus (Dropdown + Buttons nebeneinander) und
-  //    blendet im Galerie-Kopf zusätzlich Suche + „Auswählen" ein (archiveMode).
-  //  - Mobil bleibt schmal/gestapelt; Filter als horizontal scrollbare Reihe.
-  // Aufnahme-Karte (Kategorie-Ziel + große Buttons) – identisch für beide Layouts.
-  const captureBlock = `
-      <div class="fotos-capture">
+  // Zwei klar getrennte Layouts:
+  //  - Desktop (archive): eigener Fotos-Header oben (Aufnahme + Werkzeuge) +
+  //    schmale Kategorie-Rail links + große Galerie rechts.
+  //  - Mobil: schlank/gestapelt (Aufnahme-Karte, scrollbare Filter, Raster).
+  // Bausteine, die beide Layouts teilen.
+  const captureCatLabel = `
         <label class="fotos-capture-cat">
           <span>${escapeHtml(t("Kategorie für neue Fotos"))}</span>
           <select class="form-select" data-role="fotos-capture-kat">${buildKatOptions(captureKat)}</select>
-        </label>
-        <div class="fotos-capture-actions">
-          ${cameraLabel}
-          ${galleryLabel}
-        </div>
-        <span class="fotos-hint" data-role="fotos-status"></span>
-      </div>`;
-  // Galerie-Kopf (Titel/Zähler + Suche/Gruppieren/Sortieren/Auswählen).
-  const galheadBlock = `
-      <div class="fotos-galhead" data-role="fotos-galhead" hidden>
-        <span class="fotos-galhead-title" data-role="fotos-galtitle">${escapeHtml(
-          t("Alle Fotos"),
-        )}</span>
-        <span class="fotos-count" data-role="fotos-count"></span>
-        <span class="fotos-controls-spacer"></span>
-        ${searchBox}
-        ${groupSelect}
-        <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
-          t("Sortierung umschalten"),
-        )}"></button>
-        ${selectBtn}
-      </div>`;
+        </label>`;
+  const sortBtnHtml = `<button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
+    t("Sortierung umschalten"),
+  )}"></button>`;
 
   if (archive) {
-    // Desktop: Zwei-Spalten-Galerie. Links eine feste Kategorien-Sidebar
-    // (Aufnahme-Karte + komplette Kategorie-Navigation mit Zählern), rechts der
-    // Galerie-Kopf + das Bildraster. So ist auf einen Blick klar, WAS es gibt
-    // und WAS zu tun ist (Kategorie wählen → „Foto aufnehmen").
+    // Desktop: oben ein eigener, voller-Breite „Fotos-Header" (Aufnahme links,
+    // Galerie-Werkzeuge rechts). Darunter zwei Spalten: schmale Kategorie-Sidebar
+    // ganz am linken Rand + große Galerie. So bekommt die Galerie maximal Platz
+    // und es ist klar getrennt: WAS tun (oben) / WAS gibt es (links) / Bilder.
     host.innerHTML = `
     <div class="fotos-wrap fotos-wrap--desktop fotos-shell">
-      <aside class="fotos-side">
-        ${captureBlock}
-        <nav class="fotos-catnav" data-role="fotos-nav">${buildSidebarNav(activeFilter)}</nav>
-      </aside>
-      <div class="fotos-main">
-        ${galheadBlock}
-        <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
-        <div class="fotos-gallery" data-role="fotos-gallery"></div>
-        ${emptyHtml}
+      <header class="fotos-topbar">
+        <div class="fotos-topbar-left">
+          ${captureCatLabel}
+          ${cameraLabel}
+          ${galleryLabel}
+          <span class="fotos-hint" data-role="fotos-status"></span>
+        </div>
+        <div class="fotos-topbar-right" data-role="fotos-controls">
+          ${searchBox}
+          ${groupSelect}
+          ${sortBtnHtml}
+          ${selectBtn}
+        </div>
+      </header>
+      <div class="fotos-body">
+        <aside class="fotos-side">
+          <nav class="fotos-catnav" data-role="fotos-nav">${buildSidebarNav(activeFilter)}</nav>
+        </aside>
+        <div class="fotos-main">
+          <div class="fotos-galhead" data-role="fotos-galhead" hidden>
+            <span class="fotos-galhead-title" data-role="fotos-galtitle">${escapeHtml(
+              t("Alle Fotos"),
+            )}</span>
+            <span class="fotos-count" data-role="fotos-count"></span>
+          </div>
+          <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
+          <div class="fotos-gallery" data-role="fotos-gallery"></div>
+          ${emptyHtml}
+        </div>
       </div>
     </div>`;
   } else {
@@ -376,8 +371,22 @@ export function initFotos(
     // horizontal scrollbare Reihe, darunter das Raster).
     host.innerHTML = `
     <div class="fotos-wrap fotos-wrap--mobile">
-      ${captureBlock}
-      ${galheadBlock}
+      <div class="fotos-capture">
+        ${captureCatLabel}
+        <div class="fotos-capture-actions">
+          ${cameraLabel}
+          ${galleryLabel}
+        </div>
+        <span class="fotos-hint" data-role="fotos-status"></span>
+      </div>
+      <div class="fotos-galhead" data-role="fotos-galhead" hidden>
+        <span class="fotos-galhead-title" data-role="fotos-galtitle">${escapeHtml(
+          t("Alle Fotos"),
+        )}</span>
+        <span class="fotos-count" data-role="fotos-count"></span>
+        <span class="fotos-controls-spacer"></span>
+        ${sortBtnHtml}
+      </div>
       <div class="fotos-filter fotos-filter--scroll" data-role="fotos-filter" hidden>${buildFilterChips(
         activeFilter,
         true,
@@ -399,6 +408,7 @@ export function initFotos(
   const filterBar = host.querySelector<HTMLElement>('[data-role="fotos-filter"]');
   const navEl = host.querySelector<HTMLElement>('[data-role="fotos-nav"]');
   const galTitleEl = host.querySelector<HTMLElement>('[data-role="fotos-galtitle"]');
+  const controlsEl = host.querySelector<HTMLElement>('[data-role="fotos-controls"]');
   const searchEl = host.querySelector<HTMLInputElement>('[data-role="fotos-search"]');
   const sortBtn = host.querySelector<HTMLButtonElement>('[data-role="fotos-sort"]');
   const countEl = host.querySelector<HTMLElement>('[data-role="fotos-count"]');
@@ -648,6 +658,7 @@ export function initFotos(
       const hasPhotos = dbTotal > 0;
       if (galheadEl) galheadEl.hidden = !hasPhotos;
       if (filterBar) filterBar.hidden = !hasPhotos;
+      if (controlsEl) controlsEl.hidden = !hasPhotos;
     }
     if (emptyEl) {
       emptyEl.style.display = items.length === 0 ? "block" : "none";
@@ -842,6 +853,9 @@ export function initFotos(
     renderGallery();
   }
 
+  // Struktur EINMAL bauen (beim Aktivieren des Auswahl-Modus). Beim An-/Abwählen
+  // einzelner Fotos NICHT neu bauen – sonst gingen getippte Standort/Kultur-Werte
+  // verloren; dafür updateBulkBar() (nur Zähler + Aktiv/Inaktiv).
   function renderBulkBar(): void {
     if (!bulkBar) return;
     if (!selectMode) {
@@ -851,6 +865,7 @@ export function initFotos(
     }
     bulkBar.hidden = false;
     const n = selected.size;
+    const dis = n ? "" : "disabled";
     const katOpts = KATEGORIEN.map(
       (k) => `<option value="${k.key}">${escapeHtml(t(k.label))}</option>`,
     ).join("");
@@ -859,23 +874,50 @@ export function initFotos(
       <button type="button" class="btn btn-sm btn-psm-secondary-outline" data-bulk="all"><i class="bi bi-check-all"></i> ${escapeHtml(
         t("Alle"),
       )}</button>
-      <select class="form-select form-select-sm fotos-bulk-kat" data-bulk="kat-select" ${
-        n ? "" : "disabled"
-      }>
-        <option value="">${escapeHtml(t("Kategorie ändern"))}</option>
-        ${katOpts}
-      </select>
-      <button type="button" class="btn btn-sm btn-psm-secondary-outline" data-bulk="share" ${
-        n ? "" : "disabled"
-      }><i class="bi bi-share"></i> ${escapeHtml(t("Teilen"))}</button>
-      <button type="button" class="btn btn-sm btn-psm-danger-outline" data-bulk="delete" ${
-        n ? "" : "disabled"
-      }><i class="bi bi-trash"></i> ${escapeHtml(t("Löschen"))}</button>`;
+      <span class="fotos-bulk-sep"></span>
+      <span class="fotos-bulk-assign">
+        <select class="form-select form-select-sm fotos-bulk-kat" data-bulk="kat-select" ${dis}>
+          <option value="">${escapeHtml(t("Kategorie ändern"))}</option>
+          ${katOpts}
+        </select>
+        <input type="text" class="form-control form-control-sm fotos-bulk-input" data-bulk="standort" placeholder="${escapeHtml(
+          t("Standort / Fläche"),
+        )}" ${dis} />
+        <input type="text" class="form-control form-control-sm fotos-bulk-input" data-bulk="kultur" placeholder="${escapeHtml(
+          t("Kultur"),
+        )}" ${dis} />
+        <button type="button" class="btn btn-sm btn-psm-primary" data-bulk="apply" ${dis}><i class="bi bi-check-lg"></i> ${escapeHtml(
+          t("Zuweisen"),
+        )}</button>
+      </span>
+      <span class="fotos-bulk-sep"></span>
+      <button type="button" class="btn btn-sm btn-psm-secondary-outline" data-bulk="share" ${dis}><i class="bi bi-share"></i> ${escapeHtml(
+        t("Teilen"),
+      )}</button>
+      <button type="button" class="btn btn-sm btn-psm-danger-outline" data-bulk="delete" ${dis}><i class="bi bi-trash"></i> ${escapeHtml(
+        t("Löschen"),
+      )}</button>`;
+  }
+
+  // Nur Zähler + Aktiv/Inaktiv aktualisieren (ohne Neu-Aufbau).
+  function updateBulkBar(): void {
+    if (!bulkBar || !selectMode) return;
+    const n = selected.size;
+    const cnt = bulkBar.querySelector<HTMLElement>(".fotos-bulk-count");
+    if (cnt) cnt.textContent = `${n} ${t("ausgewählt")}`;
+    bulkBar
+      .querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
+        '[data-bulk="kat-select"],[data-bulk="standort"],[data-bulk="kultur"],[data-bulk="apply"],[data-bulk="share"],[data-bulk="delete"]',
+      )
+      .forEach((el) => {
+        el.disabled = n === 0;
+      });
   }
 
   selectModeBtn?.addEventListener("click", () => setSelectMode(!selectMode));
 
   bulkBar?.addEventListener("click", async (event) => {
+    const bar = event.currentTarget as HTMLElement;
     const t2 = event.target as HTMLElement | null;
     const act = t2?.closest<HTMLElement>("[data-bulk]")?.dataset.bulk;
     if (!act) return;
@@ -883,8 +925,30 @@ export function initFotos(
       const items = getFiltered();
       const allSel = items.every((f) => selected.has(f.id));
       items.forEach((f) => (allSel ? selected.delete(f.id) : selected.add(f.id)));
-      renderBulkBar();
+      updateBulkBar();
       renderGallery();
+    } else if (act === "apply") {
+      if (!selected.size) return;
+      const standort = bar.querySelector<HTMLInputElement>('[data-bulk="standort"]')?.value.trim() || "";
+      const kultur = bar.querySelector<HTMLInputElement>('[data-bulk="kultur"]')?.value.trim() || "";
+      if (!standort && !kultur) {
+        toast.info(t("Standort oder Kultur eingeben."));
+        return;
+      }
+      const patch: { standort?: string; kultur?: string } = {};
+      if (standort) patch.standort = standort;
+      if (kultur) patch.kultur = kultur;
+      try {
+        const r = await bulkUpdateFotos([...selected], patch);
+        await persistSqliteDatabaseFile().catch(() => undefined);
+        window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: 0 } }));
+        toast.success(`${r.updated} ${t("Foto(s) zugewiesen.")}`);
+        setSelectMode(false);
+        await refresh();
+      } catch (err) {
+        console.error("[Fotos] Bulk-Zuweisung fehlgeschlagen", err);
+        toast.error(t("Speichern fehlgeschlagen."));
+      }
     } else if (act === "delete") {
       if (!selected.size) return;
       if (!confirm(`${selected.size} ${t("Foto(s) endgültig löschen?")}`)) return;
@@ -983,7 +1047,7 @@ export function initFotos(
       if (selected.has(id)) selected.delete(id);
       else selected.add(id);
       tile.classList.toggle("is-selected", selected.has(id));
-      renderBulkBar();
+      updateBulkBar();
     } else {
       void openViewer(id);
     }

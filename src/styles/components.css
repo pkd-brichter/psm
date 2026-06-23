@@ -1836,6 +1836,9 @@ body:not(.m-page) .wiz-btn-next:hover { filter: brightness(0.92); }
 }
 .fotos-bulk-count { font-weight: 700; color: var(--text); margin-right: 4px; }
 .fotos-bulk-kat { max-width: 200px; }
+.fotos-bulk-sep { width: 1px; align-self: stretch; background: var(--color-border); margin: 0 2px; }
+.fotos-bulk-assign { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fotos-bulk-input { max-width: 170px; min-width: 120px; }
 
 /* Galerie mit Datums-Abschnitten (Block-Layout = robuste volle Breite) */
 .fotos-gallery { display: block; }
@@ -2070,51 +2073,86 @@ body.fotos-modal-open { overflow: hidden; }
   .fotos-modal-foot .btn, .fotos-modal-foot a.btn { flex: 1; justify-content: center; }
 }
 
-/* ===== Fotos – Desktop: Zwei-Spalten-Galerie mit Kategorien-Sidebar ===== */
-/* Links: Aufnahme-Karte + komplette Kategorie-Navigation (immer sichtbar, mit
-   Zählern). Rechts: Galerie-Kopf + Bildraster. So ist auf einen Blick klar,
-   WAS es gibt und WAS zu tun ist. */
+/* ===== Fotos – Desktop: eigener Header + schmale Sidebar + große Galerie ===== */
+/* Aufbau: oben ein voller-Breite „Fotos-Header" (Aufnahme links, Werkzeuge
+   rechts). Darunter eine schmale Kategorie-Rail am linken Rand + die große
+   Galerie. Klare Trennung: WAS tun (oben) / WAS gibt es (links) / Bilder. */
 .fotos-shell {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+/* Zweiter Header NUR für den Fotos-Bereich. */
+.fotos-topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+  background: var(--surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+.fotos-topbar-left {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.fotos-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.fotos-topbar-right[hidden] { display: none; }
+.fotos-topbar .fotos-capture-cat { flex: 0 0 auto; gap: 4px; margin: 0; }
+.fotos-topbar .fotos-capture-cat > span { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+.fotos-topbar .fotos-capture-cat select { min-width: 210px; }
+.fotos-topbar .fotos-add { margin: 0; }
+.fotos-topbar .fotos-add-hero { font-size: 0.95rem; padding: 8px 18px; }
+.fotos-topbar .fotos-hint { align-self: center; }
+.fotos-topbar .fotos-hint:empty { display: none; }
+
+/* Körper: schmale Kategorie-Rail links + große Galerie rechts. */
+.fotos-body {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 24px;
   align-items: start;
-  padding: 4px 0;
 }
 .fotos-side {
   position: sticky;
   top: 64px;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
 }
 .fotos-main { min-width: 0; }
 
-/* Aufnahme-Karte in der Sidebar: gestapelt, volle Breite, prominenter Button. */
-.fotos-shell .fotos-capture {
-  flex-direction: column;
-  align-items: stretch;
+/* Galerie-Kopf im Hauptbereich ist nur eine schlanke Titelzeile (die Werkzeuge
+   sitzen im Fotos-Header) – KEINE Karte. */
+.fotos-shell .fotos-main .fotos-galhead:not([hidden]) {
+  display: flex;
+  align-items: baseline;
   gap: 10px;
-  padding: 14px;
-  margin-bottom: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0 0 12px;
 }
-.fotos-shell .fotos-capture-actions { flex-direction: column; align-items: stretch; }
-.fotos-shell .fotos-capture .fotos-add { width: 100%; justify-content: center; }
-.fotos-shell .fotos-capture .fotos-hint { margin-left: 0; align-self: flex-start; }
-.fotos-shell .fotos-add-hero { font-size: 1rem; padding: 11px 16px; }
 
-/* Kategorien-Navigation (Sidebar). Eigene Klasse – NICHT .fotos-nav, das ist
+/* Kategorien-Rail (am linken Rand). Eigene Klasse – NICHT .fotos-nav, das ist
    für die Lightbox-Pfeile reserviert. */
 .fotos-catnav {
-  background: var(--surface-1);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 0 14px 0 0;
+  border-right: 1px solid var(--color-border);
 }
 .fotos-nav-cap {
   font-size: 0.66rem;
@@ -2186,8 +2224,9 @@ body.fotos-modal-open { overflow: hidden; }
 .fotos-navitem.is-active .fotos-nav-n { background: rgba(255, 255, 255, 0.25); color: #fff; }
 .fotos-navitem-empty { opacity: 0.5; }
 
-/* Schmale Desktop-Fenster: Sidebar über die Galerie legen statt daneben. */
-@media (max-width: 860px) {
-  .fotos-shell { grid-template-columns: 1fr; }
+/* Schmale Desktop-Fenster: Rail über die Galerie legen statt daneben. */
+@media (max-width: 980px) {
+  .fotos-body { grid-template-columns: 1fr; }
   .fotos-side { position: static; max-height: none; overflow: visible; }
+  .fotos-catnav { padding: 0; border-right: none; }
 }

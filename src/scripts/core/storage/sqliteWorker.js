@@ -1978,6 +1978,9 @@ self.onmessage = async function (event) {
       case "bulkUpdateFotoKategorie":
         result = await bulkUpdateFotoKategorie(payload);
         break;
+      case "bulkUpdateFotos":
+        result = await bulkUpdateFotos(payload);
+        break;
       case "exportFotosByIds":
         result = await exportFotosByIds(payload);
         break;
@@ -4433,6 +4436,37 @@ async function bulkUpdateFotoKategorie(payload = {}) {
   db.exec({
     sql: `UPDATE fotos SET kategorie = ? WHERE id IN (${placeholders})`,
     bind: [kategorie, ...ids],
+  });
+  return { success: true, updated: ids.length };
+}
+
+// Mehrere Fotos auf einmal mit denselben Metadaten versehen (Bulk-Zuweisung).
+// Nur die im patch enthaltenen Felder werden geschrieben (kategorie/standort/kultur).
+async function bulkUpdateFotos(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const ids = Array.isArray(payload?.ids)
+    ? payload.ids.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+    : [];
+  if (!ids.length) return { success: true, updated: 0 };
+  const patch = payload?.patch && typeof payload.patch === "object" ? payload.patch : {};
+  const fields = [];
+  const values = [];
+  const setIf = (key, column) => {
+    if (Object.prototype.hasOwnProperty.call(patch, key)) {
+      fields.push(`${column} = ?`);
+      const v = patch[key];
+      values.push(v == null || v === "" ? null : v);
+    }
+  };
+  setIf("kategorie", "kategorie");
+  setIf("standort", "standort");
+  setIf("kultur", "kultur");
+  if (!fields.length) return { success: true, updated: 0 };
+  const placeholders = ids.map(() => "?").join(",");
+  db.exec({
+    sql: `UPDATE fotos SET ${fields.join(", ")} WHERE id IN (${placeholders})`,
+    bind: [...values, ...ids],
   });
   return { success: true, updated: ids.length };
 }
