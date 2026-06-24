@@ -318,6 +318,7 @@ export function initAcker(container: Element | null, services: Services): void {
     if (fl.outline) { map.removeLayer(fl.outline); fl.outline = null; }
     if (fl.bedsLayer) { map.removeLayer(fl.bedsLayer); fl.bedsLayer = null; }
     if (fl.label && labelLayer) { labelLayer.removeLayer(fl.label); fl.label = null; }
+    clearEdgeLabels(fl);
     clearHandles(fl);
   }
 
@@ -326,6 +327,7 @@ export function initAcker(container: Element | null, services: Services): void {
     if (fl.outline) map.removeLayer(fl.outline);
     if (fl.bedsLayer) { map.removeLayer(fl.bedsLayer); fl.bedsLayer = null; }
     if (fl.label && labelLayer) labelLayer.removeLayer(fl.label);
+    clearEdgeLabels(fl);
     clearHandles(fl);
     const sel = fl._key === selId;
     const detail = bedsVisibleFor(fl);
@@ -353,6 +355,8 @@ export function initAcker(container: Element | null, services: Services): void {
     fl.outline.on("mousedown", (e: any) => onFieldMouseDown(fl, e));
 
     renderLabel(fl, sel);
+    // Kantenlängen + Dimensionen bei jeder Auswahl anzeigen (nicht nur im Edit-Modus)
+    if (sel) buildEdgeLabels(fl);
     if (sel || wasEditing) buildHandles(fl);
   }
 
@@ -365,9 +369,21 @@ export function initAcker(container: Element | null, services: Services): void {
     const cropHtml = crop
       ? `<em class="cr" style="--cc:${escapeHtml(crop.color || "#16a34a")}"><span class="dot"></span>${escapeHtml(crop.name)}</em>`
       : "";
+    // Abmessungen (Bounding-Box Breite × Höhe) nur bei ausgewählter Fläche einblenden.
+    let dimsHtml = "";
+    if (sel && fl.latlngs?.length >= 3) {
+      const lats: number[] = fl.latlngs.map((p: any) => p[0]);
+      const lngs: number[] = fl.latlngs.map((p: any) => p[1]);
+      const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+      const midLat = (minLat + maxLat) / 2, midLng = (minLng + maxLng) / 2;
+      const bM = haversineM(midLat, minLng, midLat, maxLng);
+      const hM = haversineM(minLat, midLng, maxLat, midLng);
+      dimsHtml = `<span class="dims">↔ ${nf(bM, 0)} m · ↕ ${nf(hM, 0)} m</span>`;
+    }
     const html =
       `<div class="acker-flabel${sel ? " sel" : ""}" style="--fc:${fl.color}">` +
-      `<b>${escapeHtml(fl.name || "")}</b>${cropHtml}<i>${nf(plants)} Pfl.</i></div>`;
+      `<b>${escapeHtml(fl.name || "")}</b>${cropHtml}<i>${nf(plants)} Pfl.</i>${dimsHtml}</div>`;
     fl.label = L.marker(center, {
       interactive: false,
       keyboard: false,
@@ -385,6 +401,7 @@ export function initAcker(container: Element | null, services: Services): void {
     clearEdgeLabels(fl);
     const latlngs = fl.latlngs;
     const n = latlngs.length;
+    // Marker landen in der eigenen 'edgeLabels'-Pane (z-Index 650, über allem anderen)
     fl.edgeLabels = latlngs.map((ll: any, i: number) => {
       const next = latlngs[(i + 1) % n];
       const midLat = (ll[0] + next[0]) / 2;
@@ -393,10 +410,12 @@ export function initAcker(container: Element | null, services: Services): void {
       return L.marker([midLat, midLng], {
         interactive: false,
         keyboard: false,
+        pane: "edgeLabels",
         icon: L.divIcon({
           className: "acker-edge-label-wrap",
           html: `<div class="acker-edge-label">${nf(dist, 1)} m</div>`,
           iconSize: [0, 0],
+          iconAnchor: [0, 0],
         }),
       }).addTo(map);
     });
@@ -407,8 +426,9 @@ export function initAcker(container: Element | null, services: Services): void {
     fl.edgeLabels = [];
   }
 
+  // Aktualisiert Labels sofort während eines Vertex-Drags – kein WASM-Aufruf nötig.
   function updateEdgeLabels(fl: any) {
-    if (!fl.editing || !fl.latlngs?.length) return;
+    if (!fl.latlngs?.length) return;
     clearEdgeLabels(fl);
     buildEdgeLabels(fl);
   }
@@ -430,14 +450,14 @@ export function initAcker(container: Element | null, services: Services): void {
       return m;
     });
     fl.editing = true;
-    buildEdgeLabels(fl);
+    // Edge-Labels werden von drawField() verwaltet – nicht hier neu aufbauen
   }
 
   function clearHandles(fl: any) {
     (fl.handles || []).forEach((m: any) => map.removeLayer(m));
     fl.handles = [];
     fl.editing = false;
-    clearEdgeLabels(fl);
+    // Edge-Labels werden unabhängig von Handles verwaltet – NICHT hier löschen
   }
 
   function redrawAll() { fields.forEach((fl) => drawField(fl)); }
@@ -477,8 +497,6 @@ export function initAcker(container: Element | null, services: Services): void {
   async function recompute(fl: any) {
     fl.result = await computeBeds(fl.latlngs, fl.params);
     drawField(fl);
-    // Kantenlängen-Labels live aktualisieren falls die Fläche gerade bearbeitet wird
-    if (fl.editing) updateEdgeLabels(fl);
     renderPanel();
     persistField(fl);
   }
@@ -1182,6 +1200,11 @@ export function initAcker(container: Element | null, services: Services): void {
     standorteLayer.addTo(map);
     // Flächen-Beschriftungen (Name + Pflanzenzahl am Zentroid)
     labelLayer = L.layerGroup().addTo(map);
+    // Eigene Pane für Kanten-Labels: z-Index 650 liegt über Marker-Pane (600),
+    // sodass die Längen-Labels niemals von Polygon- oder Marker-Ebenen verdeckt werden.
+    const edgeLabelPane = map.createPane("edgeLabels");
+    edgeLabelPane.style.zIndex = "650";
+    edgeLabelPane.style.pointerEvents = "none";
     // Karte bewusst aufgeräumt: keine schwebende Icon-Leiste und kein
     // Layer-Umschalter mehr. Anzeige-Schalter (Fit/Beschriftung/Beete/Kartentyp)
     // sitzen jetzt im linken Panel; beim Klick auf eine Fläche/ein Gewächshaus
@@ -1375,6 +1398,7 @@ function renderShell(): string {
     .acker-flabel i{font-style:normal;color:var(--ap-green-dark);font-weight:var(--ap-w-med);font-size:11px}
     .acker-flabel .cr{font-style:normal;font-weight:var(--ap-w-bold);font-size:10px;color:#fff;background:var(--cc,#16a34a);border-radius:5px;padding:1px 6px;margin:1px 0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .acker-flabel .cr .dot{display:none}
+    .acker-flabel .dims{font-style:normal;color:var(--ap-ink-3);font-size:10px;font-weight:var(--ap-w-med);display:block;text-align:center;margin-top:1px}
     .acker-flabel.sel{box-shadow:0 3px 12px rgba(0,0,0,.3);transform:translate(-50%,-50%) scale(1.05)}
     /* Floating-Toolbar */
     .acker-toolbar a{display:flex!important;align-items:center;justify-content:center;font-size:17px;color:var(--ap-ink-2);background:#fff;width:34px;height:34px;line-height:34px}
