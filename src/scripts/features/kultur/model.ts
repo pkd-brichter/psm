@@ -184,3 +184,90 @@ export function spanInWindow(window, fromIso, toIso) {
   if (e < s) e = s;
   return { s, e, openEnd: !toIso };
 }
+
+// ---------------------------------------------------------------------------
+// Satzplanung: Kultur-Stammdaten → automatische Termine
+// ---------------------------------------------------------------------------
+
+// Anbau-Methode (vorziehen vs. direkt säen).
+export const METHODE_META = {
+  anzucht: { label: "Anzucht (vorziehen)", short: "Anzucht" },
+  direkt: { label: "Direktsaat", short: "Direkt" },
+};
+
+// Biodynamischer Typ nach Maria Thun (für Aussaattage-Overlay in Phase 3).
+export const BIO_TYP_META = {
+  frucht: { label: "Fruchttag", icon: "bi-apple", color: "#dc2626" },
+  blatt: { label: "Blatttag", icon: "bi-tree", color: "#16a34a" },
+  wurzel: { label: "Wurzeltag", icon: "bi-arrow-down", color: "#a16207" },
+  bluete: { label: "Blütentag", icon: "bi-flower2", color: "#0891b2" },
+};
+
+// Auswahl-Einheiten für die Satz-Menge.
+export const MENGE_EINHEITEN = ["Pflanzen", "m²", "Beete", "lfd. m", "g Saatgut"];
+
+// yyyy-mm-dd + n Tage -> yyyy-mm-dd (kalendarisch, DST-sicher).
+export function addDays(iso, days) {
+  if (!iso) return null;
+  const d = new Date(String(iso).slice(0, 10) + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + Math.round(Number(days) || 0));
+  return (
+    d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0")
+  );
+}
+
+// Tage zwischen zwei ISO-Daten (b - a). Null, wenn ein Wert fehlt/ungültig.
+export function daysBetween(aIso, bIso) {
+  const a = dateNum(aIso);
+  const b = dateNum(bIso);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const da = new Date(String(aIso).slice(0, 10) + "T00:00:00");
+  const db = new Date(String(bIso).slice(0, 10) + "T00:00:00");
+  return Math.round((db.getTime() - da.getTime()) / 86400000);
+}
+
+// Aus Stammdaten + EINEM Anker-Termin die übrigen Termine berechnen.
+// Kette: Aussaat --(anzuchtTage)--> Pflanzung --(kulturTage)--> Ernte von
+//        --(ernteTage)--> Ernte bis.   anchorField ∈ 'aussaat'|'pflanz'|'ernte'.
+export function computePlan(stamm, anchorField, anchorIso) {
+  if (!stamm || !anchorIso) return {};
+  const methode = stamm.anbauMethode === "anzucht" ? "anzucht" : "direkt";
+  const anz = methode === "anzucht" ? Number(stamm.anzuchtTage) || 0 : 0;
+  const kul = Number(stamm.kulturTage) || 0;
+  const ern = Number(stamm.ernteTage) || 0;
+  let pflanz;
+  if (anchorField === "aussaat") pflanz = addDays(anchorIso, anz);
+  else if (anchorField === "ernte") pflanz = kul ? addDays(anchorIso, -kul) : anchorIso;
+  else pflanz = anchorIso;
+  const aussaatDatum = addDays(pflanz, -anz);
+  const ernteVon = kul ? addDays(pflanz, kul) : null;
+  const ernteBis = ernteVon ? addDays(ernteVon, ern) : null;
+  return { aussaatDatum, pflanzDatum: pflanz, ernteVon, ernteBis };
+}
+
+// Alle Termine eines Plans um n Tage verschieben (für Folgesätze).
+export function shiftPlan(plan, days) {
+  if (!plan) return {};
+  return {
+    aussaatDatum: addDays(plan.aussaatDatum, days),
+    pflanzDatum: addDays(plan.pflanzDatum, days),
+    ernteVon: addDays(plan.ernteVon, days),
+    ernteBis: addDays(plan.ernteBis, days),
+  };
+}
+
+// Kultur-Stammdatensatz per (genauem, sonst Teil-) Namensvergleich finden.
+export function findStammByName(stammList, name) {
+  if (!name || !Array.isArray(stammList)) return null;
+  const n = String(name).trim().toLowerCase();
+  if (!n) return null;
+  return (
+    stammList.find((s) => String(s.name || "").trim().toLowerCase() === n) ||
+    stammList.find((s) => {
+      const sn = String(s.name || "").trim().toLowerCase();
+      return sn && (sn.startsWith(n) || n.startsWith(sn));
+    }) ||
+    null
+  );
+}

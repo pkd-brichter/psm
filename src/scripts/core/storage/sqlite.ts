@@ -1194,6 +1194,23 @@ export async function deleteAnbau(payload: { id: string }): Promise<any> {
   return await callWorker("deleteAnbau", payload);
 }
 
+// Kultur-Stammdaten-Bibliothek (Reifezeiten/Abstände/Familie) – Basis der
+// automatischen Termin-Berechnung im Satz-Editor. 1:1 als REST /kultur-stamm.
+export async function listKulturStamm(): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("listKulturStamm");
+}
+
+export async function upsertKulturStamm(payload: any): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("upsertKulturStamm", payload);
+}
+
+export async function deleteKulturStamm(payload: { id: string }): Promise<any> {
+  if (!worker) throw new Error("Database not initialized");
+  return await callWorker("deleteKulturStamm", payload);
+}
+
 export async function listMassnahmen(payload?: {
   flaecheTyp?: string;
   flaecheId?: string;

@@ -15,6 +15,7 @@ import {
   listAnbau,
   upsertAnbau,
   deleteAnbau,
+  listKulturStamm,
   listMassnahmen,
   upsertMassnahme,
   deleteMassnahme,
@@ -38,6 +39,11 @@ import {
   MONTHS_SHORT,
   monthsBetween,
   posInMonths,
+  METHODE_META,
+  MENGE_EINHEITEN,
+  computePlan,
+  shiftPlan,
+  findStammByName,
 } from "./model";
 import { renderBoard } from "./board";
 
@@ -67,6 +73,7 @@ export function initKultur(container: Element | null, services: Services): void 
   let anbau: any[] = [];
   let mass: any[] = [];
   let kulturen: any[] = [];
+  let stamm: any[] = [];
   let selKey: string | null = null;
   let mode: "flaechen" | "plan" = "plan"; // Überblick (Anbauplan) zuerst
   let loaded = false;
@@ -94,6 +101,7 @@ export function initKultur(container: Element | null, services: Services): void 
       try { const r = await listAnbau(); anbau = r?.rows || []; } catch { anbau = []; }
       try { const r = await listMassnahmen(); mass = r?.rows || []; } catch { mass = []; }
       try { const r = await listKulturen(); kulturen = r?.rows || []; } catch { kulturen = []; }
+      try { const r = await listKulturStamm(); stamm = r?.rows || []; } catch { stamm = []; }
       if (!psmImportedThisSession) {
         psmImportedThisSession = true;
         try {
@@ -215,7 +223,7 @@ export function initKultur(container: Element | null, services: Services): void 
       const harvest = harvestText(current);
       hero = `<div class="km-hero active" style="--cc:${escapeHtml(cropColor(current))}">
         <div class="km-hero-ic"><i class="bi bi-flower2"></i></div>
-        <div class="km-hero-body"><div class="km-hero-crop">${escapeHtml(current.kultur || "Kultur")}</div><div class="km-hero-sub">${escapeHtml(since + harvest)}</div></div>
+        <div class="km-hero-body"><div class="km-hero-crop">${escapeHtml(current.kultur || "Kultur")}</div><div class="km-hero-sub">${escapeHtml(since + harvest + mengeText(current))}</div></div>
         <button class="km-hero-edit" data-edit-crop="current" title="Bearbeiten"><i class="bi bi-pencil"></i></button>
       </div>`;
     } else {
@@ -326,6 +334,10 @@ export function initKultur(container: Element | null, services: Services): void 
     if (b) return ` · Ernte ~${b}`;
     if (v) return ` · Ernte ab ${v}`;
     return "";
+  }
+  function mengeText(c: any): string {
+    if (!c || c.menge == null || c.menge === "") return "";
+    return ` · ${c.menge} ${c.einheit || "Pflanzen"}`;
   }
 
   // Saison-Leiste: Kultur-Belegung + Ernte-Zeitraum + je Maßnahmen-Typ
@@ -468,8 +480,16 @@ export function initKultur(container: Element | null, services: Services): void 
     return ov;
   }
   function kulturDatalist() {
+    // Bibliothek (mit Termin-Stammdaten) zuerst, dann übrige bekannte Kulturen.
     const seen = new Set<string>();
-    const opts = kulturen.map((k) => k.kultur).filter((k) => k && !seen.has(k) && seen.add(k)).map((k) => `<option value="${escapeHtml(k)}"></option>`).join("");
+    const names: string[] = [];
+    const push = (n: string) => {
+      const k = String(n || "").trim().toLowerCase();
+      if (n && !seen.has(k)) { seen.add(k); names.push(n); }
+    };
+    stamm.forEach((s) => push(s.name));
+    kulturen.forEach((k) => push(k.kultur));
+    const opts = names.map((k) => `<option value="${escapeHtml(k)}"></option>`).join("");
     return `<datalist id="km-kultur-dl">${opts}</datalist>`;
   }
 
@@ -477,43 +497,140 @@ export function initKultur(container: Element | null, services: Services): void 
   function editCrop(u: any, crop: any, which: string, cropCount: number) {
     const isNext = which === "next" && !crop;
     const c = crop || {};
-    const defDate = crop?.pflanzDatum?.slice(0, 10) || (isNext ? "" : todayIso());
+    const initStamm =
+      (c.kulturStammId ? stamm.find((s) => s.id === c.kulturStammId) : null) ||
+      findStammByName(stamm, c.kultur);
+    const defPflanz = c.pflanzDatum?.slice(0, 10) || (isNext ? "" : todayIso());
     const swatches = CROP_PALETTE.map((col) => `<button type="button" class="km-sw${(c.color || "") === col ? " on" : ""}" data-col="${col}" style="background:${col}"></button>`).join("");
+    const einheitOpts = MENGE_EINHEITEN.map((e) => `<option value="${escapeHtml(e)}"${(c.einheit || "Pflanzen") === e ? " selected" : ""}>${escapeHtml(e)}</option>`).join("");
     const body = `
-      <label class="km-fld big">Was wächst hier?<input list="km-kultur-dl" data-f="kultur" value="${escapeHtml(c.kultur || "")}" placeholder="z. B. Gurke" autocomplete="off" /></label>${kulturDatalist()}
-      <div class="km-frow3">
-        <label class="km-fld">${isNext ? "Geplante Pflanzung" : "Pflanzung"}<input type="date" data-f="pflanz" value="${defDate}" /></label>
+      <label class="km-fld big">Was wächst hier?<input list="km-kultur-dl" data-f="kultur" value="${escapeHtml(c.kultur || "")}" placeholder="z. B. Tomate – aus Bibliothek wählen" autocomplete="off" /></label>${kulturDatalist()}
+      <div class="km-stammhint" data-stammhint hidden></div>
+      <div class="km-anchor" data-anchor-row>
+        <span class="km-anchor-l">Termine berechnen ab</span>
+        <div class="km-seg km-anchor-seg" data-anchorseg>
+          <button type="button" class="km-segb" data-anchor="aussaat">Aussaat</button>
+          <button type="button" class="km-segb on" data-anchor="pflanz">Pflanzung</button>
+          <button type="button" class="km-segb" data-anchor="ernte">Ernte</button>
+        </div>
+      </div>
+      <div class="km-frow2">
+        <label class="km-fld">Aussaat<input type="date" data-f="aussaat" value="${(c.aussaatDatum || "").slice(0, 10)}" /></label>
+        <label class="km-fld">${isNext ? "Geplante Pflanzung" : "Pflanzung"}<input type="date" data-f="pflanz" value="${defPflanz}" /></label>
+      </div>
+      <div class="km-frow2">
         <label class="km-fld">Ernte von<input type="date" data-f="ernteVon" value="${(c.ernteVon || "").slice(0, 10)}" /></label>
         <label class="km-fld">Ernte bis<input type="date" data-f="ernteBis" value="${(c.ernteBis || c.ernteDatum || "").slice(0, 10)}" /></label>
       </div>
-      <div class="km-hint2"><i class="bi bi-info-circle"></i> Bei Frucht­gemüse (Tomate, Gurke …) wird über den ganzen Zeitraum laufend geerntet.</div>
+      <div class="km-hint2"><i class="bi bi-info-circle"></i> Termine kommen automatisch aus der Bibliothek – jederzeit frei überschreibbar.</div>
+      <div class="km-frow2">
+        <label class="km-fld">Menge<input type="number" step="1" min="0" data-f="menge" value="${c.menge != null ? c.menge : ""}" placeholder="optional" /></label>
+        <label class="km-fld">Einheit<select data-f="einheit">${einheitOpts}</select></label>
+      </div>
+      ${!crop ? `
+      <div class="km-succ">
+        <label class="km-check2"><input type="checkbox" data-f="succOn" /> <span><i class="bi bi-layers"></i> Folgesätze anlegen <small>(gestaffelt für laufende Ernte)</small></span></label>
+        <div class="km-succ-box km-frow2" data-succ-box hidden>
+          <label class="km-fld">Anzahl Sätze<input type="number" min="2" max="20" step="1" data-f="succN" value="4" /></label>
+          <label class="km-fld">Abstand (Tage)<input type="number" min="1" step="1" data-f="succGap" value="14" /></label>
+        </div>
+      </div>` : ""}
       <button type="button" class="km-more" data-more><i class="bi bi-sliders"></i> Mehr (Status, Farbe, Notiz)</button>
       <div class="km-more-box" data-more-box hidden>
         <label class="km-fld">Status<select data-f="status">${["aktiv", "geplant", "abgeschlossen"].map((s) => `<option value="${s}"${(c.status || (isNext ? "geplant" : "aktiv")) === s ? " selected" : ""}>${STATUS_META[s].label}</option>`).join("")}</select></label>
         <div class="km-fld">Farbe<div class="km-sws">${swatches}</div></div>
         <label class="km-fld">Notiz<textarea data-f="notes" rows="2" placeholder="optional">${escapeHtml(c.notes || "")}</textarea></label>
       </div>
-      ${crop ? `<button type="button" class="km-dangerlink" data-f="del"><i class="bi bi-trash"></i> Kultur löschen</button>` : ""}`;
-    const ov = openModal(crop ? "Kultur bearbeiten" : (isNext ? "Nächste Kultur planen" : "Kultur eintragen"), body, "Speichern", (root) => {
+      ${crop ? `<button type="button" class="km-dangerlink" data-f="del"><i class="bi bi-trash"></i> Satz löschen</button>` : ""}`;
+    const ov = openModal(crop ? "Satz bearbeiten" : (isNext ? "Nächsten Satz planen" : "Satz eintragen"), body, "Speichern", (root) => {
       const get = (f: string) => (root.querySelector(`[data-f="${f}"]`) as HTMLInputElement)?.value?.trim() || "";
       const kultur = get("kultur");
       if (!kultur) { toast.warning("Bitte eine Kultur angeben."); return false; }
+      const matched = findStammByName(stamm, kultur);
+      const aussaat = get("aussaat") || null;
       const pflanz = get("pflanz") || null;
       const ernteVon = get("ernteVon") || null;
       const ernteBis = get("ernteBis") || null;
+      const mengeRaw = get("menge");
+      const menge = mengeRaw ? Number(mengeRaw) : null;
+      const einheit = (root.querySelector('[data-f="einheit"]') as HTMLSelectElement)?.value || null;
       const moreOpen = !(root.querySelector("[data-more-box]") as HTMLElement).hidden;
       let status = moreOpen ? get("status") : "";
       if (!status) status = isNext ? "geplant" : (pflanz && dateNum(pflanz) > Number(todayIso().replace(/-/g, "")) ? "geplant" : "aktiv");
       const selSw = root.querySelector(".km-sw.on") as HTMLElement | null;
-      const color = selSw?.dataset.col || c.color || CROP_PALETTE[cropCount % CROP_PALETTE.length];
-      const eppo = kulturen.find((k) => k.kultur === kultur)?.eppoCode || null;
+      const color = selSw?.dataset.col || c.color || matched?.color || CROP_PALETTE[cropCount % CROP_PALETTE.length];
+      const eppo = kulturen.find((k) => k.kultur === kultur)?.eppoCode || matched?.eppoCode || null;
+      const notes = moreOpen ? (get("notes") || null) : (c.notes || null);
+      const base = { flaecheTyp: u.typ, flaecheId: u.id, kultur, eppoCode: eppo, color, menge, einheit, kulturStammId: matched?.id || c.kulturStammId || null, notes };
+      const succOn = !crop && (root.querySelector('[data-f="succOn"]') as HTMLInputElement)?.checked;
+      const succN = Math.max(2, Math.min(20, Number((root.querySelector('[data-f="succN"]') as HTMLInputElement)?.value) || 2));
+      const succGap = Math.max(1, Number((root.querySelector('[data-f="succGap"]') as HTMLInputElement)?.value) || 14);
+      const t = Number(todayIso().replace(/-/g, ""));
       void (async () => {
         try {
-          await upsertAnbau({ id: crop?.id, flaecheTyp: u.typ, flaecheId: u.id, kultur, eppoCode: eppo, status, pflanzDatum: pflanz, ernteVon, ernteBis, ernteDatum: null, color, notes: moreOpen ? (get("notes") || null) : (c.notes || null) });
+          if (succOn) {
+            const grp = "sg-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            const basePlan = { aussaatDatum: aussaat, pflanzDatum: pflanz, ernteVon, ernteBis };
+            for (let k = 0; k < succN; k++) {
+              const sp = shiftPlan(basePlan, k * succGap);
+              const st = sp.pflanzDatum && dateNum(sp.pflanzDatum) > t ? "geplant" : status;
+              await upsertAnbau({ ...base, ...sp, ernteDatum: null, status: st, satzGruppe: grp });
+            }
+            toast.success(`${succN} Sätze angelegt.`);
+          } else {
+            await upsertAnbau({ id: crop?.id, ...base, aussaatDatum: aussaat, pflanzDatum: pflanz, ernteVon, ernteBis, ernteDatum: null, status, satzGruppe: c.satzGruppe || null });
+          }
           await reloadData(); renderAll(); persist();
         } catch { toast.error("Speichern fehlgeschlagen."); }
       })();
     });
+
+    // ---- Live: Bibliotheks-Erkennung + automatische Termin-Berechnung ----
+    let anchor = "pflanz";
+    const dEl = (f: string) => ov.querySelector(`[data-f="${f}"]`) as HTMLInputElement;
+    const anchorRow = ov.querySelector("[data-anchor-row]") as HTMLElement;
+    const hintEl = ov.querySelector("[data-stammhint]") as HTMLElement;
+    let curStamm: any = initStamm;
+    const showHint = () => {
+      if (!curStamm) { hintEl.hidden = true; anchorRow.style.opacity = "0.45"; return; }
+      anchorRow.style.opacity = "1";
+      const meta = METHODE_META[curStamm.anbauMethode === "anzucht" ? "anzucht" : "direkt"];
+      const parts = [meta.short];
+      if (curStamm.kulturTage) parts.push(`${curStamm.kulturTage} T. Kultur`);
+      if (curStamm.anbauMethode === "anzucht" && curStamm.anzuchtTage) parts.push(`${curStamm.anzuchtTage} T. Anzucht`);
+      if (curStamm.familie) parts.push(curStamm.familie);
+      hintEl.innerHTML = `<i class="bi bi-stars"></i> <b>Bibliothek:</b> ${escapeHtml(parts.join(" · "))}`;
+      hintEl.hidden = false;
+    };
+    const recompute = () => {
+      if (!curStamm) return;
+      const srcField = anchor === "ernte" ? "ernteVon" : anchor;
+      const anchorIso = dEl(srcField).value || todayIso();
+      const plan = computePlan(curStamm, anchor, anchorIso);
+      if (plan.aussaatDatum != null) dEl("aussaat").value = plan.aussaatDatum || "";
+      if (plan.pflanzDatum != null) dEl("pflanz").value = plan.pflanzDatum || "";
+      if (plan.ernteVon != null) dEl("ernteVon").value = plan.ernteVon || "";
+      if (plan.ernteBis != null) dEl("ernteBis").value = plan.ernteBis || "";
+    };
+    const kulturInp = dEl("kultur");
+    kulturInp.addEventListener("input", () => { curStamm = findStammByName(stamm, kulturInp.value); showHint(); });
+    kulturInp.addEventListener("change", () => {
+      curStamm = findStammByName(stamm, kulturInp.value);
+      showHint();
+      if (curStamm) { if (!dEl("pflanz").value) dEl("pflanz").value = todayIso(); recompute(); }
+    });
+    ov.querySelectorAll("[data-anchor]").forEach((b: any) => b.addEventListener("click", () => {
+      ov.querySelectorAll("[data-anchorseg] .km-segb").forEach((x: any) => x.classList.remove("on"));
+      b.classList.add("on"); anchor = b.dataset.anchor; recompute();
+    }));
+    ["aussaat", "pflanz", "ernteVon"].forEach((f) => dEl(f)?.addEventListener("change", () => {
+      const srcField = anchor === "ernte" ? "ernteVon" : anchor;
+      if (f === srcField) recompute();
+    }));
+    showHint();
+
+    const succChk = ov.querySelector('[data-f="succOn"]') as HTMLInputElement | null;
+    succChk?.addEventListener("change", () => { (ov.querySelector("[data-succ-box]") as HTMLElement).hidden = !succChk.checked; });
     ov.querySelectorAll(".km-sw").forEach((b: any) => b.addEventListener("click", () => { ov.querySelectorAll(".km-sw").forEach((x: any) => x.classList.remove("on")); b.classList.add("on"); }));
     ov.querySelector('[data-f="del"]')?.addEventListener("click", async () => {
       if (!crop?.id) return;
@@ -721,6 +838,17 @@ function renderShell(): string {
     .km-frow3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
     .km-hint2{font-size:11.5px;color:var(--text-dim);display:flex;align-items:center;gap:6px;margin-top:-2px}
     .km-hint2 i{color:#0891b2}
+    .km-stammhint{font-size:12.5px;color:#15803d;background:rgba(16,163,74,.08);border:1px solid rgba(16,163,74,.22);border-radius:9px;padding:8px 11px;display:flex;align-items:center;gap:7px;margin-top:-4px}
+    .km-stammhint i{color:#16a34a}
+    .km-stammhint b{font-weight:700}
+    .km-anchor{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;transition:opacity .15s}
+    .km-anchor-l{font-size:12.5px;color:var(--text-muted)}
+    .km-anchor-seg{align-self:auto}
+    .km-anchor-seg .km-segb{padding:7px 13px;font-size:12.5px}
+    .km-succ{border:1px dashed var(--border-2);border-radius:11px;padding:11px 12px;display:flex;flex-direction:column;gap:10px}
+    .km-check2{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--text);cursor:pointer}
+    .km-check2 input{width:17px;height:17px;accent-color:#16a34a;flex:none}
+    .km-check2 small{color:var(--text-dim);font-weight:400}
     /* Kontextmenü */
     .km-ctx{position:fixed;z-index:4000;min-width:210px;background:var(--surface-1);border:1px solid var(--border-1);border-radius:11px;box-shadow:0 14px 38px rgba(15,23,42,.22);padding:5px;font-size:14px;color:var(--text)}
     .km-ctx-t{font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

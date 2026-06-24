@@ -1191,13 +1191,119 @@ function ensureAnbauTable(targetDb = db) {
       ernte_bis TEXT,
       color TEXT,
       notes TEXT,
+      aussaat_datum TEXT,
+      kultur_stamm_id TEXT,
+      menge REAL,
+      einheit TEXT,
+      satz_gruppe TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_anbau_unit ON anbau_kultur(flaeche_typ, flaeche_id);
     CREATE INDEX IF NOT EXISTS idx_anbau_status ON anbau_kultur(status);
     CREATE INDEX IF NOT EXISTS idx_anbau_pflanz ON anbau_kultur(pflanz_datum);
+    CREATE INDEX IF NOT EXISTS idx_anbau_satz ON anbau_kultur(satz_gruppe);
   `);
+}
+
+// Kultur-Stammdaten: Bibliothek anbaubarer Kulturen mit gärtnerischen Kennwerten
+// (Familie für Fruchtfolge, Kulturdauer/Anzucht-Vorlauf für automatische Termine,
+// Abstände, biodynamischer Typ nach Maria Thun). Quelle der automatischen
+// Aussaat-/Pflanz-/Ernte-Terminberechnung im Satz-Editor.
+function ensureKulturStammTable(targetDb = db) {
+  if (!targetDb) return;
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS kultur_stamm (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      familie TEXT,
+      anbau_methode TEXT,
+      anzucht_tage INTEGER,
+      kultur_tage INTEGER,
+      ernte_tage INTEGER,
+      reihen_abstand_cm INTEGER,
+      pflanz_abstand_cm INTEGER,
+      bio_typ TEXT,
+      color TEXT,
+      eppo_code TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kultur_stamm_name ON kultur_stamm(name);
+  `);
+}
+
+// Startbibliothek für eine deutsche (Demeter-)Marktgärtnerei. Werte sind
+// praxisnahe Richtwerte (Tage = Kulturdauer ab Pflanzung/Saat bis Erntebeginn;
+// anzucht = Tage Aussaat→pflanzbereit; ernte = Länge des Erntefensters).
+// Spalten: [name, familie, methode, anzuchtTage, kulturTage, ernteTage,
+//           reiheCm, pflanzCm, bioTyp, color]
+const KULTUR_STAMM_SEED = [
+  ["Tomate", "Nachtschatten", "anzucht", 42, 60, 90, 60, 50, "frucht", "#dc2626"],
+  ["Gurke", "Kürbisgewächse", "anzucht", 28, 55, 70, 100, 50, "frucht", "#16a34a"],
+  ["Zucchini", "Kürbisgewächse", "anzucht", 21, 50, 70, 100, 90, "frucht", "#65a30d"],
+  ["Paprika", "Nachtschatten", "anzucht", 56, 70, 80, 50, 40, "frucht", "#ea580c"],
+  ["Aubergine", "Nachtschatten", "anzucht", 56, 75, 70, 60, 50, "frucht", "#7c3aed"],
+  ["Kürbis (Hokkaido)", "Kürbisgewächse", "anzucht", 21, 100, 30, 150, 100, "frucht", "#ea580c"],
+  ["Butternut-Kürbis", "Kürbisgewächse", "anzucht", 21, 110, 30, 150, 100, "frucht", "#f59e0b"],
+  ["Zuckermais", "Süßgräser", "anzucht", 21, 80, 14, 60, 30, "frucht", "#facc15"],
+  ["Buschbohne", "Hülsenfrüchte", "direkt", 0, 60, 30, 40, 8, "frucht", "#16a34a"],
+  ["Stangenbohne", "Hülsenfrüchte", "direkt", 0, 70, 50, 80, 15, "frucht", "#15803d"],
+  ["Erbse", "Hülsenfrüchte", "direkt", 0, 65, 25, 40, 5, "frucht", "#65a30d"],
+  ["Kopfsalat", "Korbblütler", "anzucht", 28, 55, 14, 30, 30, "blatt", "#84cc16"],
+  ["Pflücksalat", "Korbblütler", "direkt", 0, 35, 21, 20, 10, "blatt", "#22c55e"],
+  ["Feldsalat", "Baldriangewächse", "direkt", 0, 60, 21, 10, 5, "blatt", "#15803d"],
+  ["Spinat", "Gänsefußgewächse", "direkt", 0, 45, 21, 20, 5, "blatt", "#166534"],
+  ["Mangold", "Gänsefußgewächse", "anzucht", 28, 55, 60, 35, 30, "blatt", "#0d9488"],
+  ["Rucola", "Kreuzblütler", "direkt", 0, 35, 21, 15, 5, "blatt", "#4ade80"],
+  ["Endivie", "Korbblütler", "anzucht", 35, 70, 21, 35, 30, "blatt", "#84cc16"],
+  ["Radicchio", "Korbblütler", "anzucht", 35, 80, 21, 35, 30, "blatt", "#be123c"],
+  ["Rote Bete", "Gänsefußgewächse", "direkt", 0, 90, 30, 25, 8, "wurzel", "#be123c"],
+  ["Möhre", "Doldenblütler", "direkt", 0, 100, 30, 25, 4, "wurzel", "#f97316"],
+  ["Pastinake", "Doldenblütler", "direkt", 0, 120, 40, 30, 8, "wurzel", "#fbbf24"],
+  ["Knollensellerie", "Doldenblütler", "anzucht", 56, 120, 30, 40, 35, "wurzel", "#14b8a6"],
+  ["Fenchel", "Doldenblütler", "anzucht", 35, 70, 21, 35, 30, "blatt", "#a3e635"],
+  ["Petersilie", "Doldenblütler", "direkt", 0, 80, 90, 25, 8, "blatt", "#16a34a"],
+  ["Dill", "Doldenblütler", "direkt", 0, 50, 30, 20, 5, "blatt", "#65a30d"],
+  ["Zwiebel", "Lauchgewächse", "anzucht", 49, 110, 21, 25, 10, "wurzel", "#f59e0b"],
+  ["Lauch / Porree", "Lauchgewächse", "anzucht", 56, 120, 60, 35, 12, "blatt", "#4d7c0f"],
+  ["Knoblauch", "Lauchgewächse", "direkt", 0, 240, 21, 25, 12, "wurzel", "#d97706"],
+  ["Brokkoli", "Kreuzblütler", "anzucht", 35, 70, 21, 45, 40, "bluete", "#0891b2"],
+  ["Blumenkohl", "Kreuzblütler", "anzucht", 35, 75, 14, 50, 45, "bluete", "#0ea5e9"],
+  ["Weißkohl", "Kreuzblütler", "anzucht", 35, 100, 30, 50, 45, "blatt", "#22c55e"],
+  ["Rotkohl", "Kreuzblütler", "anzucht", 35, 110, 30, 50, 45, "blatt", "#9333ea"],
+  ["Wirsing", "Kreuzblütler", "anzucht", 35, 90, 30, 50, 45, "blatt", "#16a34a"],
+  ["Grünkohl", "Kreuzblütler", "anzucht", 35, 90, 60, 45, 45, "blatt", "#166534"],
+  ["Kohlrabi", "Kreuzblütler", "anzucht", 28, 55, 21, 30, 25, "blatt", "#8b5cf6"],
+  ["Radieschen", "Kreuzblütler", "direkt", 0, 28, 14, 12, 4, "wurzel", "#ef4444"],
+  ["Rettich", "Kreuzblütler", "direkt", 0, 60, 21, 20, 8, "wurzel", "#f43f5e"],
+  ["Kartoffel", "Nachtschatten", "direkt", 0, 100, 30, 70, 33, "wurzel", "#a16207"],
+  ["Schwarzwurzel", "Korbblütler", "direkt", 0, 180, 40, 30, 6, "wurzel", "#57534e"],
+  ["Basilikum", "Lippenblütler", "anzucht", 28, 50, 60, 25, 20, "blatt", "#22c55e"],
+];
+
+function seedKulturStammIfEmpty(targetDb = db) {
+  if (!targetDb) return;
+  const count = targetDb.selectValue("SELECT COUNT(*) FROM kultur_stamm") || 0;
+  if (count > 0) return;
+  const now = new Date().toISOString();
+  const stmt = targetDb.prepare(
+    "INSERT INTO kultur_stamm (id, name, familie, anbau_methode, anzucht_tage, kultur_tage, ernte_tage, reihen_abstand_cm, pflanz_abstand_cm, bio_typ, color, eppo_code, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  );
+  try {
+    KULTUR_STAMM_SEED.forEach((r, i) => {
+      stmt.bind([
+        "ks-" + String(i + 1).padStart(3, "0"),
+        r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
+        null, null, now, now,
+      ]);
+      stmt.step();
+      stmt.reset();
+    });
+  } finally {
+    stmt.finalize();
+  }
 }
 
 function ensureMassnahmeTable(targetDb = db) {
@@ -1242,6 +1348,32 @@ function mapAnbauRow(row) {
     ernteVon: row.ernte_von ?? null,
     ernteBis: row.ernte_bis ?? row.ernte_datum ?? null,
     color: row.color ?? null,
+    notes: row.notes ?? null,
+    aussaatDatum: row.aussaat_datum ?? null,
+    kulturStammId: row.kultur_stamm_id ?? null,
+    menge: row.menge != null ? Number(row.menge) : null,
+    einheit: row.einheit ?? null,
+    satzGruppe: row.satz_gruppe ?? null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+function mapKulturStammRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    name: row.name ?? "",
+    familie: row.familie ?? null,
+    anbauMethode: row.anbau_methode ?? null,
+    anzuchtTage: row.anzucht_tage != null ? Number(row.anzucht_tage) : null,
+    kulturTage: row.kultur_tage != null ? Number(row.kultur_tage) : null,
+    ernteTage: row.ernte_tage != null ? Number(row.ernte_tage) : null,
+    reihenAbstandCm: row.reihen_abstand_cm != null ? Number(row.reihen_abstand_cm) : null,
+    pflanzAbstandCm: row.pflanz_abstand_cm != null ? Number(row.pflanz_abstand_cm) : null,
+    bioTyp: row.bio_typ ?? null,
+    color: row.color ?? null,
+    eppoCode: row.eppo_code ?? null,
     notes: row.notes ?? null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
@@ -1303,16 +1435,21 @@ async function upsertAnbau(payload = {}) {
     payload.ernteBis != null ? String(payload.ernteBis) : null,
     payload.color != null ? String(payload.color) : null,
     payload.notes != null ? String(payload.notes) : null,
+    payload.aussaatDatum != null ? String(payload.aussaatDatum) : null,
+    payload.kulturStammId != null ? String(payload.kulturStammId) : null,
+    payload.menge != null && payload.menge !== "" ? Number(payload.menge) : null,
+    payload.einheit != null ? String(payload.einheit) : null,
+    payload.satzGruppe != null ? String(payload.satzGruppe) : null,
   ];
   const exists = db.selectValue("SELECT 1 FROM anbau_kultur WHERE id = ? LIMIT 1", [id]);
   if (exists) {
     const stmt = db.prepare(
-      "UPDATE anbau_kultur SET flaeche_typ=?, flaeche_id=?, kultur=?, eppo_code=?, status=?, pflanz_datum=?, ernte_datum=?, ernte_von=?, ernte_bis=?, color=?, notes=?, updated_at=? WHERE id=?"
+      "UPDATE anbau_kultur SET flaeche_typ=?, flaeche_id=?, kultur=?, eppo_code=?, status=?, pflanz_datum=?, ernte_datum=?, ernte_von=?, ernte_bis=?, color=?, notes=?, aussaat_datum=?, kultur_stamm_id=?, menge=?, einheit=?, satz_gruppe=?, updated_at=? WHERE id=?"
     );
     stmt.bind([...v, now, id]); stmt.step(); stmt.finalize();
   } else {
     const stmt = db.prepare(
-      "INSERT INTO anbau_kultur (flaeche_typ, flaeche_id, kultur, eppo_code, status, pflanz_datum, ernte_datum, ernte_von, ernte_bis, color, notes, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+      "INSERT INTO anbau_kultur (flaeche_typ, flaeche_id, kultur, eppo_code, status, pflanz_datum, ernte_datum, ernte_von, ernte_bis, color, notes, aussaat_datum, kultur_stamm_id, menge, einheit, satz_gruppe, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     );
     stmt.bind([...v, now, now, id]); stmt.step(); stmt.finalize();
   }
@@ -1331,6 +1468,67 @@ async function deleteAnbau(payload = {}) {
   const upd = db.prepare("UPDATE massnahme SET anbau_id = NULL WHERE anbau_id = ?");
   upd.bind([id]); upd.step(); upd.finalize();
   const stmt = db.prepare("DELETE FROM anbau_kultur WHERE id = ?");
+  stmt.bind([id]); stmt.step(); stmt.finalize();
+  return { success: true };
+}
+
+// ---- Kultur-Stammdaten (Bibliothek) -------------------------------------
+async function listKulturStamm() {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturStammTable();
+  seedKulturStammIfEmpty();
+  const rows = [];
+  db.exec({
+    sql: "SELECT * FROM kultur_stamm ORDER BY name COLLATE NOCASE ASC",
+    rowMode: "object",
+    callback: (row) => rows.push(mapKulturStammRow(row)),
+  });
+  return { rows };
+}
+
+async function upsertKulturStamm(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturStammTable();
+  const id = String(payload.id || generateKulturMittelId());
+  const now = new Date().toISOString();
+  const intOrNull = (x) => (x != null && x !== "" && Number.isFinite(Number(x)) ? Math.round(Number(x)) : null);
+  const v = [
+    String(payload.name || "").trim(),
+    payload.familie != null ? String(payload.familie) : null,
+    payload.anbauMethode != null ? String(payload.anbauMethode) : null,
+    intOrNull(payload.anzuchtTage),
+    intOrNull(payload.kulturTage),
+    intOrNull(payload.ernteTage),
+    intOrNull(payload.reihenAbstandCm),
+    intOrNull(payload.pflanzAbstandCm),
+    payload.bioTyp != null ? String(payload.bioTyp) : null,
+    payload.color != null ? String(payload.color) : null,
+    payload.eppoCode != null ? String(payload.eppoCode) : null,
+    payload.notes != null ? String(payload.notes) : null,
+  ];
+  const exists = db.selectValue("SELECT 1 FROM kultur_stamm WHERE id = ? LIMIT 1", [id]);
+  if (exists) {
+    const stmt = db.prepare(
+      "UPDATE kultur_stamm SET name=?, familie=?, anbau_methode=?, anzucht_tage=?, kultur_tage=?, ernte_tage=?, reihen_abstand_cm=?, pflanz_abstand_cm=?, bio_typ=?, color=?, eppo_code=?, notes=?, updated_at=? WHERE id=?"
+    );
+    stmt.bind([...v, now, id]); stmt.step(); stmt.finalize();
+  } else {
+    const stmt = db.prepare(
+      "INSERT INTO kultur_stamm (name, familie, anbau_methode, anzucht_tage, kultur_tage, ernte_tage, reihen_abstand_cm, pflanz_abstand_cm, bio_typ, color, eppo_code, notes, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    );
+    stmt.bind([...v, now, now, id]); stmt.step(); stmt.finalize();
+  }
+  let record = null;
+  db.exec({ sql: "SELECT * FROM kultur_stamm WHERE id = ? LIMIT 1", bind: [id], rowMode: "object", callback: (row) => { if (!record) record = mapKulturStammRow(row); } });
+  return record;
+}
+
+async function deleteKulturStamm(payload = {}) {
+  if (!db) throw new Error("Database not initialized");
+  ensureKulturStammTable();
+  const id = String(payload.id ?? "").trim();
+  if (!id) throw new Error("ID fehlt.");
+  const stmt = db.prepare("DELETE FROM kultur_stamm WHERE id = ?");
   stmt.bind([id]); stmt.step(); stmt.finalize();
   return { success: true };
 }
@@ -2385,6 +2583,15 @@ self.onmessage = async function (event) {
       case "deleteAnbau":
         result = await deleteAnbau(payload);
         break;
+      case "listKulturStamm":
+        result = await listKulturStamm();
+        break;
+      case "upsertKulturStamm":
+        result = await upsertKulturStamm(payload);
+        break;
+      case "deleteKulturStamm":
+        result = await deleteKulturStamm(payload);
+        break;
       case "listMassnahmen":
         result = await listMassnahmen(payload);
         break;
@@ -3367,6 +3574,41 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 24 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 25: Satzplanung – Kultur-Stammdaten-Bibliothek
+  // (kultur_stamm, vorbefüllt) + Satz-Felder an anbau_kultur (Aussaat-Termin,
+  // Stammdaten-Verknüpfung, Menge/Einheit, Folgesatz-Gruppe).
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  const kulturStammMissing = !hasTable(db, "kultur_stamm");
+  if (kulturStammMissing || postMigrationVersion < 25) {
+    console.log("Migrating database to version 25 (Satzplanung / Kultur-Stammdaten)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureAnbauTable(db);
+      const anbauCols = [
+        ["aussaat_datum", "TEXT"],
+        ["kultur_stamm_id", "TEXT"],
+        ["menge", "REAL"],
+        ["einheit", "TEXT"],
+        ["satz_gruppe", "TEXT"],
+      ];
+      anbauCols.forEach(([name, typ]) => {
+        if (!hasColumn(db, "anbau_kultur", name)) {
+          db.exec(`ALTER TABLE anbau_kultur ADD COLUMN ${name} ${typ}`);
+        }
+      });
+      db.exec("CREATE INDEX IF NOT EXISTS idx_anbau_satz ON anbau_kultur(satz_gruppe)");
+      ensureKulturStammTable(db);
+      seedKulturStammIfEmpty(db);
+      db.exec("PRAGMA user_version = 25");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 25 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 25 failed:", error);
       throw error;
     }
   }

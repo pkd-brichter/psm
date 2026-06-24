@@ -39,7 +39,7 @@
 ## 🏗️ Architektur-Prinzipien (immer einhalten)
 
 - **Eine gemeinsame SQLite-DB für ALLE Apps.** Worker `src/scripts/core/storage/sqliteWorker.js`
-  ist die *Source of Truth*. Schema-Änderungen über **Migrationen** (`PRAGMA user_version`, aktuell bis **v24**).
+  ist die *Source of Truth*. Schema-Änderungen über **Migrationen** (`PRAGMA user_version`, aktuell bis **v25**).
   Egal welche App geöffnet wird – dieselbe DB. Ziel: Cross-App-Auswertungen.
 - **Modular & stabil:** jede App = eigenes Feature-Modul unter `src/scripts/features/<name>/`,
   als View in EINER SPA. Worker-CRUD + Bridge (`storage/sqlite.ts`) + Migration.
@@ -89,6 +89,14 @@ Wetter*.
   - `massnahme` – Maßnahmen (`art`: mechanisch/chemisch_psm/duengung/nuetzlinge/bewaesserung/
     monitoring/sonstiges; `status` geplant/erledigt; Datum, Menge/Einheit, Mittel, Notiz). Spalte
     `history_id` **verlinkt** bestehende Pflanzenschutz-Einträge (`history`), statt sie zu duplizieren.
+  - `kultur_stamm` – **Kultur-Stammdaten-Bibliothek** (Migration **v25**, ~40 Gemüse vorbefüllt): Familie
+    (Fruchtfolge), Anbau-Methode (Anzucht/Direkt), Anzucht-Vorlauf & Kulturdauer & Erntefenster, Abstände,
+    biodynamischer Typ (Maria Thun – für späteres Aussaattage-Overlay). **Basis der automatischen
+    Termin-Berechnung.** `anbau_kultur` ist damit ein **Satz**: zusätzlich `aussaat_datum`,
+    `kultur_stamm_id`, `menge`/`einheit`, `satz_gruppe` (Folgesatz-Serie). Satz-Editor: Kultur aus der
+    Bibliothek wählen → Aussaat-/Pflanz-/Ernte-Termine rechnen sich automatisch (Anker wählbar:
+    Aussaat · Pflanzung · Ernte, frei überschreibbar); **Folgesätze** (N Sätze, alle X Tage) in einem
+    Schritt. Helfer in `kultur/model.ts` (`computePlan`/`shiftPlan`/`findStammByName`).
 - **Anbauplan-Board** (`board.ts`, robuste Monatsachse + %-Positionierung, NICHT ein CSS-Grid mit
   explizitem grid-row/col – das war zuvor kollabiert): Kultur-Belegung als Balken (Pflanzung→Ernte-Ende),
   **schraffierter Ernte-Zeitraum**, Maßnahmen-Marker **erledigt = gefüllt / geplant = Ring/gestrichelt**,
