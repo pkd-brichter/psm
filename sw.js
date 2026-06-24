@@ -10,7 +10,7 @@
  * - Auto-Startup ohne Dialog (wenn Datenbank vorhanden)
  */
 
-const CACHE_VERSION = 'v2.0.0-1782261327776';
+const CACHE_VERSION = 'v2.0.0-1782276744416';
 const STATIC_CACHE = `psm-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `psm-dynamic-${CACHE_VERSION}`;
 const DB_STATE_KEY = 'psm-db-state';
