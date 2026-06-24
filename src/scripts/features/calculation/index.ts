@@ -164,9 +164,35 @@ function createSection(
   section.className = "section-inner";
 
   section.innerHTML = `
+    <style>
+      .calc-wizard-head{margin:0 0 18px}
+      .calc-wizard-dots{display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+      .cw-dot{width:38px;height:38px;border-radius:50%;background:var(--surface-2,#f1f5f9);color:var(--text-dim,#94a3b8);border:2px solid var(--border-1,#d3dce4);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;transition:all .2s}
+      .cw-dot.active{background:#16a34a;border-color:#16a34a;color:#fff}
+      .cw-line{width:46px;max-width:13vw;height:2px;background:var(--border-1,#d3dce4);transition:background .2s}
+      .cw-line.active{background:#16a34a}
+      .calc-wizard-title{text-align:center;font-size:15px;color:var(--text-muted,#64748b)}
+      .calc-wizard-title b{color:var(--text,#152230)}
+      .calc-step[hidden]{display:none}
+      .calc-wizard-nav{display:flex;align-items:center;gap:10px;margin-top:6px;padding-top:14px;border-top:1px solid var(--border-1,#d3dce4)}
+      .cw-spacer{flex:1}
+      .calc-wizard-nav .btn{min-height:46px}
+      @media(max-width:600px){.calc-wizard-nav{position:sticky;bottom:0;background:var(--surface-1,#fff);padding-bottom:6px;z-index:5}.cw-dot{width:34px;height:34px;font-size:14px}}
+    </style>
     <div class="card calc-form-card mb-4 no-print">
       <div class="card-body p-4">
         <form id="calculationForm" class="no-print">
+          <div class="calc-wizard-head">
+            <div class="calc-wizard-dots">
+              <span class="cw-dot active" data-step-dot="0"><i class="bi bi-person-badge"></i></span>
+              <span class="cw-line"></span>
+              <span class="cw-dot" data-step-dot="1"><i class="bi bi-tags"></i></span>
+              <span class="cw-line"></span>
+              <span class="cw-dot" data-step-dot="2"><i class="bi bi-calendar-event"></i></span>
+            </div>
+            <div class="calc-wizard-title"><span data-role="wizard-stepno">Schritt 1 von 3</span> · <b data-role="wizard-title">Grunddaten</b></div>
+          </div>
+          <div class="calc-step" data-step="0">
           <!-- Gruppe 1: Grunddaten -->
           <fieldset class="calc-fieldset mb-4">
             <legend class="calc-legend">
@@ -213,6 +239,8 @@ function createSection(
             </div>
           </fieldset>
           
+          </div>
+          <div class="calc-step" data-step="1">
           <!-- Gruppe 2: Mittel & Codes -->
           <fieldset class="calc-fieldset mb-4">
             <legend class="calc-legend">
@@ -266,6 +294,8 @@ function createSection(
             <div data-role="kultur-mittel-list" class="km-list"></div>
           </fieldset>
 
+          </div>
+          <div class="calc-step" data-step="2">
           <!-- Gruppe 3: Verwendung, Ort & Zeit -->
           <fieldset class="calc-fieldset mb-4">
             <legend class="calc-legend">
@@ -308,10 +338,12 @@ function createSection(
             behandlungsart: formDefaults.qsBehandlungsart || "",
           })}
           
-          <div class="text-center mt-4">
-            <button type="submit" class="btn btn-lg btn-psm-primary px-5">
-              <i class="bi bi-calculator me-2"></i>Berechnen ${renderQsBadge()}
-            </button>
+          </div>
+          <div class="calc-wizard-nav">
+            <button type="button" class="btn btn-psm-secondary-outline" data-role="wiz-back" hidden><i class="bi bi-arrow-left me-1"></i>Zurück</button>
+            <span class="cw-spacer"></span>
+            <button type="button" class="btn btn-psm-primary px-4" data-role="wiz-next">Weiter<i class="bi bi-arrow-right ms-1"></i></button>
+            <button type="submit" class="btn btn-lg btn-psm-primary px-5" data-role="wiz-submit" hidden><i class="bi bi-check-lg me-2"></i>Speichern ${renderQsBadge()}</button>
           </div>
         </form>
       </div>
@@ -1101,6 +1133,57 @@ function renderResults(
   resultCard.classList.remove("d-none");
 }
 
+// Schritt-für-Schritt-Assistent: zeigt eine Gruppe nach der anderen statt einer
+// langen Liste. Reine Präsentationsschicht – die Felder/Logik bleiben gleich.
+// Wirkt auf Desktop UND Mobil (beide mounten dasselbe Formular).
+function setupCalcWizard(section: HTMLElement): void {
+  const form = section.querySelector<HTMLFormElement>("#calculationForm");
+  if (!form) return;
+  const steps = Array.from(form.querySelectorAll<HTMLElement>(".calc-step"));
+  if (steps.length < 2) return;
+  const dots = Array.from(form.querySelectorAll<HTMLElement>("[data-step-dot]"));
+  const lines = Array.from(form.querySelectorAll<HTMLElement>(".cw-line"));
+  const titleEl = form.querySelector<HTMLElement>('[data-role="wizard-title"]');
+  const stepnoEl = form.querySelector<HTMLElement>('[data-role="wizard-stepno"]');
+  const back = form.querySelector<HTMLElement>('[data-role="wiz-back"]');
+  const next = form.querySelector<HTMLElement>('[data-role="wiz-next"]');
+  const submit = form.querySelector<HTMLElement>('[data-role="wiz-submit"]');
+  const TITLES = ["Grunddaten", "Mittel & Codes", "Anwendung & QS"];
+  let cur = 0;
+  const show = (i: number): void => {
+    cur = Math.max(0, Math.min(steps.length - 1, i));
+    steps.forEach((s, idx) => { s.hidden = idx !== cur; });
+    dots.forEach((d, idx) => d.classList.toggle("active", idx <= cur));
+    lines.forEach((l, idx) => l.classList.toggle("active", idx < cur));
+    if (titleEl) titleEl.textContent = TITLES[cur] || "";
+    if (stepnoEl) stepnoEl.textContent = `Schritt ${cur + 1} von ${steps.length}`;
+    if (back) (back as HTMLElement).hidden = cur === 0;
+    const last = cur === steps.length - 1;
+    if (next) (next as HTMLElement).hidden = last;
+    if (submit) (submit as HTMLElement).hidden = !last;
+    try { section.querySelector(".calc-form-card")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
+  };
+  const stepValid = (i: number): boolean => {
+    const reqs = Array.from(
+      steps[i].querySelectorAll<HTMLInputElement | HTMLSelectElement>("input[required], select[required], textarea[required]")
+    );
+    for (const el of reqs) {
+      if (el.offsetParent === null) continue; // ausgeblendete Felder (z. B. Mittel-Liste) überspringen
+      if (!el.value || !String(el.value).trim()) {
+        el.focus();
+        (el as any).reportValidity?.();
+        return false;
+      }
+    }
+    return true;
+  };
+  next?.addEventListener("click", () => { if (stepValid(cur)) show(cur + 1); });
+  back?.addEventListener("click", () => show(cur - 1));
+  // Nach erfolgreichem Speichern wird das Formular zurückgesetzt -> wieder Schritt 1.
+  form.addEventListener("reset", () => setTimeout(() => show(0), 0));
+  show(0);
+}
+
 export function initCalculation(
   container: Element | null,
   services: Services
@@ -1125,6 +1208,16 @@ export function initCalculation(
   applyFieldLabels(section, initialState.fieldLabels);
   setupLookupAutocompletes(section);
   setupCodeDropdowns(section);
+  try {
+    setupCalcWizard(section);
+  } catch (err) {
+    // Sichere Degradation: bei Problemen das vollständige Formular zeigen.
+    console.warn("[Erfassen] Schritt-Assistent nicht aktiv, zeige Vollformular.", err);
+    section.querySelectorAll<HTMLElement>(".calc-step").forEach((s) => { s.hidden = false; });
+    section.querySelector<HTMLElement>('[data-role="wiz-next"]')?.setAttribute("hidden", "");
+    section.querySelector<HTMLElement>('[data-role="wiz-back"]')?.setAttribute("hidden", "");
+    section.querySelector<HTMLElement>('[data-role="wiz-submit"]')?.removeAttribute("hidden");
+  }
 
   const form = section.querySelector<HTMLFormElement>("#calculationForm");
   const resultCard = section.querySelector<HTMLDivElement>("#calc-result");
