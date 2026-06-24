@@ -628,7 +628,9 @@ export function initAcker(container: Element | null, services: Services): void {
     recompute(fl);
     toast.info(`Beete-Ausrichtung: ${fl.params.angle}°`);
   }
-  // Längste Kante finden → Beet-Winkel ableiten (Beet-Peilung = Kanten-Peilung − 90°).
+  // Längste Kante finden → Beet-Winkel ableiten (Beete PARALLEL zur längsten Kante).
+  // WASM-Konvention: angle=0 → Ost-West-Beete, angle=90 → Nord-Süd-Beete.
+  // Kompass-Peilung β → angle = (90 − β) mod 180.
   function computeFieldAngle(latlngs: any[]): number {
     if (latlngs.length < 2) return 0;
     let bestLen = -1, bearing = 0;
@@ -637,7 +639,7 @@ export function initAcker(container: Element | null, services: Services): void {
       const len = haversineM(a[0], a[1], b[0], b[1]);
       if (len > bestLen) { bestLen = len; bearing = bearingDeg(a[0], a[1], b[0], b[1]); }
     }
-    return ((Math.round(bearing - 90) % 180) + 180) % 180;
+    return ((90 - Math.round(bearing)) % 180 + 180) % 180;
   }
   function alignBedsToField(fl: any) {
     fl.params.angle = computeFieldAngle(fl.latlngs || []);
@@ -1101,6 +1103,37 @@ export function initAcker(container: Element | null, services: Services): void {
   // ---------- Zeichnen ----------
   let drawing = false; let pts: any[] = []; let preview: any = null; let dots: any[] = [];
   let keySeq = 0;
+  let drawReadyAt = 0; // Timestamp ab dem Klicks als Punkte akzeptiert werden (Grace-Period)
+  let drawCursorEl: HTMLElement | null = null;
+
+  function getDrawCursor(): HTMLElement {
+    if (!drawCursorEl) {
+      drawCursorEl = document.createElement("div");
+      drawCursorEl.className = "acker-draw-cur";
+      drawCursorEl.innerHTML =
+        `<svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">` +
+        `<circle cx="19" cy="19" r="9" stroke="#22c55e" stroke-width="2.5"/>` +
+        `<line x1="19" y1="2" x2="19" y2="9" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round"/>` +
+        `<line x1="19" y1="29" x2="19" y2="36" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round"/>` +
+        `<line x1="2" y1="19" x2="9" y2="19" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round"/>` +
+        `<line x1="29" y1="19" x2="36" y2="19" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round"/>` +
+        `<circle cx="19" cy="19" r="2.5" fill="#22c55e"/>` +
+        `</svg>`;
+      document.body.appendChild(drawCursorEl);
+    }
+    return drawCursorEl;
+  }
+
+  function onDrawCursorMove(e: MouseEvent) {
+    const cur = getDrawCursor();
+    cur.style.left = e.clientX + "px";
+    cur.style.top = e.clientY + "px";
+    cur.style.opacity = "1";
+  }
+  function onDrawCursorLeave() {
+    if (drawCursorEl) drawCursorEl.style.opacity = "0";
+  }
+
   function clearDrawTemp() {
     if (preview) { map.removeLayer(preview); preview = null; }
     dots.forEach((d) => map.removeLayer(d)); dots = []; pts = [];
@@ -1109,9 +1142,23 @@ export function initAcker(container: Element | null, services: Services): void {
     drawing = on;
     el('[data-role="acker-banner"]')!.style.display = on ? "block" : "none";
     (el('[data-role="acker-draw"]') as HTMLElement).style.display = on ? "none" : "block";
-    map.getContainer().style.cursor = on ? "crosshair" : "";
-    if (on) { map.on("mousemove", onMapMove); }
-    else { map.off("mousemove", onMapMove); clearDrawTemp(); }
+    const mc = map.getContainer();
+    if (on) {
+      drawReadyAt = Date.now() + 250; // Grace-Period: erste 250ms keine Punkte setzen
+      mc.style.cursor = "none";
+      const cur = getDrawCursor();
+      cur.style.opacity = "0";
+      mc.addEventListener("mousemove", onDrawCursorMove);
+      mc.addEventListener("mouseleave", onDrawCursorLeave);
+      map.on("mousemove", onMapMove);
+    } else {
+      mc.style.cursor = "";
+      if (drawCursorEl) { drawCursorEl.style.opacity = "0"; }
+      mc.removeEventListener("mousemove", onDrawCursorMove);
+      mc.removeEventListener("mouseleave", onDrawCursorLeave);
+      map.off("mousemove", onMapMove);
+      clearDrawTemp();
+    }
   }
   // Live-Vorschau: das Polygon aus den gesetzten Punkten + (optional) der Cursor
   // als nächster Punkt. WICHTIG interactive:false – sonst „schluckt" das
@@ -1141,6 +1188,7 @@ export function initAcker(container: Element | null, services: Services): void {
   }
   function onMapClick(e: any) {
     if (!drawing) { hideInfoCard(); return; }
+    if (Date.now() < drawReadyAt) return; // Grace-Period: Klick vom Button ignorieren
     // Klick nahe dem ersten Punkt schließt das Polygon (Schnapp-UX).
     if (isNearFirst(e.latlng)) { finishDraw(); return; }
     pts.push([e.latlng.lat, e.latlng.lng]);
@@ -1453,6 +1501,7 @@ function renderShell(): string {
     .acker-sw.on{box-shadow:0 0 0 2px var(--ap-ink)}
     .acker-sw-custom{grid-column:1 / -1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px dashed var(--ap-line-2);border-radius:var(--ap-r-sm);padding:7px;cursor:pointer;font-size:var(--ap-fs-xs);color:var(--ap-ink-2)}
     .acker-sw-custom input{width:26px;height:26px;border:0;background:none;padding:0;cursor:pointer}
+    .acker-draw-cur{position:fixed;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);transition:opacity .1s;will-change:left,top;filter:drop-shadow(0 1px 3px rgba(0,0,0,.35))}
     @media(max-width:760px){.acker-wrap{flex-direction:column;height:auto}.acker-side{width:100%;max-height:46vh}.acker-map{height:52vh}}
   </style>
   <section class="calc-section">
