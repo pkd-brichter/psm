@@ -9,6 +9,7 @@ import {
   deleteAckerflaeche,
   listKulturen,
   listAnbau,
+  listMassnahmen,
   persistSqliteDatabaseFile,
 } from "@scripts/core/storage/sqlite";
 import { getActiveDriverKey } from "@scripts/core/storage";
@@ -58,13 +59,17 @@ export function initAcker(container: Element | null, services: Services): void {
   // Anzeige-Schalter (Client-seitig, nicht persistiert)
   let labelsOn = true;
   let bedsGlobalOn = true;
-  // Aktuelle Kultur-Belegung je Fläche (aus der Kulturführung) – nur Anzeige.
+  // Aktuelle Kultur-Belegung + Maßnahmen je Fläche (aus der zentralen DB /
+  // Kulturführung) – nur Anzeige auf der Karte. Modular: jede neue Funktion liest
+  // dieselben zentralen Tabellen über (flaeche_typ, flaeche_id).
   let anbauRows: any[] = [];
+  let massRows: any[] = [];
+  const anbauForUnit = (typ: string, id: any) => anbauRows.filter((a) => a.flaecheTyp === typ && String(a.flaecheId) === String(id));
+  const massForUnit = (typ: string, id: any) => massRows.filter((m) => m.flaecheTyp === typ && String(m.flaecheId) === String(id));
   // Welche Kultur „wächst" gerade auf dieser Fläche? Bevorzugt die echte,
   // datierte Belegung aus der Kulturführung; sonst das einfache Kultur-Etikett.
   function fieldCrop(fl: any): { name: string; color: string | null } | null {
-    const rows = anbauRows.filter((a) => String(a.flaecheId) === String(fl.id));
-    const cur = unitCrops(rows).current;
+    const cur = unitCrops(anbauForUnit("acker", fl.id)).current;
     if (cur && cur.kultur) return { name: cur.kultur, color: cropColor(cur) };
     if (fl.kultur) return { name: fl.kultur, color: null };
     return null;
@@ -170,12 +175,12 @@ export function initAcker(container: Element | null, services: Services): void {
         `${escapeHtml(name)}${areaTxt ? " · " + areaTxt : ""}`,
         { permanent: true, direction: "top", className: "acker-standort-label", offset: [0, -9] }
       );
-      const popupRows = [
-        `<b>${escapeHtml(name)}</b>`,
-        areaTxt ? `Fläche: ${areaTxt}` : "",
-        p.kind ? escapeHtml(String(p.kind)) : "",
-      ].filter(Boolean).join("<br>");
-      marker.bindPopup(popupRows);
+      // Klick auf ein Gewächshaus → dieselbe Info-Karte wie bei Flächen.
+      marker.on("click", () => showInfoCard({
+        typ: "haus", id: p.id, name,
+        area: Number.isFinite(areaQm) && areaQm > 0 ? areaQm : 0,
+        latlng: [lat, lng],
+      }));
       standorteLayer.addLayer(marker);
     });
   }
@@ -331,7 +336,7 @@ export function initAcker(container: Element | null, services: Services): void {
     }
 
     fl.outline = L.polygon(fl.latlngs, { ...styleOutline(fl, sel, detail), className: sel ? "acker-outline-grab" : "", bubblingMouseEvents: false }).addTo(map);
-    fl.outline.on("click", () => select(fl._key));
+    fl.outline.on("click", () => { select(fl._key); showInfoCard({ typ: "acker", id: fl.id, name: fl.name, area: fl.result?.areaM2 || 0, fieldRef: fl }); });
     fl.outline.on("dblclick", () => zoomToField(fl));
     fl.outline.on("contextmenu", (e: any) => openFieldMenu(fl, e));
     fl.outline.on("mousedown", (e: any) => onFieldMouseDown(fl, e));
@@ -742,6 +747,64 @@ export function initAcker(container: Element | null, services: Services): void {
     updateTotals();
   }
 
+  // ---------- Info-Karte auf der Karte (Klick auf Fläche/Gewächshaus) ----------
+  const MON = ["Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sep.", "Okt.", "Nov.", "Dez."];
+  function fmtD(iso: string): string {
+    if (!iso) return "";
+    const d = new Date(String(iso).slice(0, 10) + "T00:00:00");
+    if (isNaN(d.getTime())) return "";
+    return `${d.getDate()}. ${MON[d.getMonth()]}`;
+  }
+  function harvestTxt(c: any): string {
+    const v = c?.ernteVon ? fmtD(c.ernteVon) : "";
+    const b = c?.ernteBis || c?.ernteDatum ? fmtD(c.ernteBis || c.ernteDatum) : "";
+    if (v && b) return `Ernte ${v}–${b}`;
+    if (b) return `Ernte ~${b}`;
+    if (v) return `Ernte ab ${v}`;
+    return "";
+  }
+  function hideInfoCard() { const c = el('[data-role="acker-info"]'); if (c) c.style.display = "none"; }
+  function showInfoCard(unit: any) {
+    const card = el('[data-role="acker-info"]'); if (!card) return;
+    const { current, next } = unitCrops(anbauForUnit(unit.typ, unit.id));
+    const openTasks = massForUnit(unit.typ, unit.id).filter((m) => m.status === "geplant").length;
+    const isHaus = unit.typ === "haus";
+    const area = unit.area ? `${nf(unit.area)} m²` : "";
+    const cc = current ? cropColor(current) : "#94a3b8";
+    const cropBlock = current
+      ? `<div class="ai-row"><span class="ai-dot" style="background:${escapeHtml(cc)}"></span>
+           <div><div class="ai-crop">${escapeHtml(current.kultur || "Kultur")}</div>
+           <div class="ai-sub">${escapeHtml([current.pflanzDatum ? "gepflanzt " + fmtD(current.pflanzDatum) : "", harvestTxt(current)].filter(Boolean).join(" · "))}</div></div></div>`
+      : `<div class="ai-row"><span class="ai-dot" style="background:#cbd5e1"></span><div class="ai-crop muted">Fläche ist frei</div></div>`;
+    const nextBlock = next
+      ? `<div class="ai-next"><i class="bi bi-arrow-right-short"></i> Danach: <b>${escapeHtml(next.kultur || "")}</b>${next.pflanzDatum ? " ab " + fmtD(next.pflanzDatum) : ""}</div>`
+      : "";
+    const metrics = !isHaus && unit.fieldRef
+      ? `<div class="ai-metrics"><span><b>${nf(unit.fieldRef.result?.beds?.length || 0)}</b> Beete</span><span><b>${nf(unit.fieldRef.result?.bedMeters || 0)}</b> m</span><span><b>${nf(unit.fieldRef.result?.plants || 0)}</b> Pfl.</span></div>`
+      : "";
+    const tasks = `<div class="ai-tasks${openTasks ? " has" : ""}"><i class="bi ${openTasks ? "bi-list-check" : "bi-check2-circle"}"></i> ${openTasks ? openTasks + " Aufgabe" + (openTasks === 1 ? "" : "n") + " offen" : "Nichts offen"}</div>`;
+    card.innerHTML = `
+      <div class="ai-head">
+        <div class="ai-title"><b>${escapeHtml(unit.name || "Fläche")}</b><span class="ai-badge">${isHaus ? "Gewächshaus" : "Freiland"}${area ? " · " + area : ""}</span></div>
+        <button class="ai-x" data-ai="close" title="Schließen"><i class="bi bi-x-lg"></i></button>
+      </div>
+      ${cropBlock}${nextBlock}${metrics}${tasks}
+      <div class="ai-actions">
+        <button class="ai-btn primary" data-ai="kultur"><i class="bi bi-clipboard2-pulse"></i> Kulturführung</button>
+        <button class="ai-btn" data-ai="zoom"><i class="bi bi-zoom-in"></i> Hin</button>
+      </div>`;
+    card.style.display = "block";
+    card.querySelector('[data-ai="close"]')?.addEventListener("click", hideInfoCard);
+    card.querySelector('[data-ai="kultur"]')?.addEventListener("click", () => {
+      updateSlice("app", (app: any) => ({ ...app, activeSection: "kultur" }));
+      try { window.dispatchEvent(new CustomEvent("psm:openKultur", { detail: { typ: unit.typ, id: String(unit.id) } })); } catch {}
+    });
+    card.querySelector('[data-ai="zoom"]')?.addEventListener("click", () => {
+      if (!isHaus && unit.fieldRef) zoomToField(unit.fieldRef);
+      else if (unit.latlng) map.setView(unit.latlng, Math.max(map.getZoom(), 18));
+    });
+  }
+
   function renderPanel() {
     if (!listEl || !emptyEl || !totalsEl) return;
     emptyEl.style.display = fields.length ? "none" : "block";
@@ -795,6 +858,7 @@ export function initAcker(container: Element | null, services: Services): void {
       d.querySelector(".acker-fhead")!.addEventListener("click", (ev: any) => {
         if (ev.target.classList.contains("acker-name")) return;
         select(fl._key);
+        showInfoCard({ typ: "acker", id: fl.id, name: fl.name, area: fl.result?.areaM2 || 0, fieldRef: fl });
       });
       const nameInp = d.querySelector(".acker-name") as HTMLInputElement;
       nameInp.addEventListener("input", (e: any) => { fl.name = e.target.value; persistField(fl); });
@@ -953,7 +1017,7 @@ export function initAcker(container: Element | null, services: Services): void {
     dots.push(d);
   }
   function onMapClick(e: any) {
-    if (!drawing) return;
+    if (!drawing) { hideInfoCard(); return; }
     // Klick nahe dem ersten Punkt schließt das Polygon (Schnapp-UX).
     if (isNearFirst(e.latlng)) { finishDraw(); return; }
     pts.push([e.latlng.lat, e.latlng.lng]);
@@ -1026,40 +1090,16 @@ export function initAcker(container: Element | null, services: Services): void {
     standorteLayer.addTo(map);
     // Flächen-Beschriftungen (Name + Pflanzenzahl am Zentroid)
     labelLayer = L.layerGroup().addTo(map);
-    L.control.layers(
-      { Satellit: sat, "Karte (OSM)": osm },
-      { "Freiland-Standorte": standorteLayer },
-      { position: "topright", collapsed: true }
-    ).addTo(map);
-
-    // Floating-Toolbar: alle anzeigen · Beschriftung · Beete-Detail
-    const Toolbar = L.Control.extend({
-      options: { position: "topleft" },
-      onAdd() {
-        const div = L.DomUtil.create("div", "leaflet-bar acker-toolbar");
-        div.innerHTML =
-          `<a href="#" data-tb="fit" title="Alle Flächen anzeigen"><i class="bi bi-arrows-fullscreen"></i></a>` +
-          `<a href="#" data-tb="labels" class="on" title="Beschriftungen ein/aus"><i class="bi bi-tag"></i></a>` +
-          `<a href="#" data-tb="beds" class="on" title="Beete-Detail ein/aus"><i class="bi bi-grid-3x3"></i></a>`;
-        L.DomEvent.disableClickPropagation(div);
-        const hook = (sel: string, fn: () => void) => {
-          (div.querySelector(sel) as HTMLElement).addEventListener("click", (e) => { e.preventDefault(); fn(); });
-        };
-        hook('[data-tb="fit"]', fitAll);
-        hook('[data-tb="labels"]', () => {
-          labelsOn = !labelsOn;
-          (div.querySelector('[data-tb="labels"]') as HTMLElement).classList.toggle("on", labelsOn);
-          redrawAll();
-        });
-        hook('[data-tb="beds"]', () => {
-          bedsGlobalOn = !bedsGlobalOn;
-          (div.querySelector('[data-tb="beds"]') as HTMLElement).classList.toggle("on", bedsGlobalOn);
-          redrawAll();
-        });
-        return div;
-      },
-    });
-    map.addControl(new Toolbar());
+    // Karte bewusst aufgeräumt: keine schwebende Icon-Leiste und kein
+    // Layer-Umschalter mehr. Anzeige-Schalter (Fit/Beschriftung/Beete/Kartentyp)
+    // sitzen jetzt im linken Panel; beim Klick auf eine Fläche/ein Gewächshaus
+    // erscheint stattdessen oben links eine Info-Karte.
+    const infoEl = L.DomUtil.create("div", "acker-info");
+    infoEl.setAttribute("data-role", "acker-info");
+    infoEl.style.display = "none";
+    map.getContainer().appendChild(infoEl);
+    L.DomEvent.disableClickPropagation(infoEl);
+    L.DomEvent.disableScrollPropagation(infoEl);
 
     map.on("click", onMapClick);
     map.on("contextmenu", (e: any) => {
@@ -1079,6 +1119,19 @@ export function initAcker(container: Element | null, services: Services): void {
     el('[data-role="acker-cancel"]')!.addEventListener("click", () => setDraw(false));
     el('[data-role="acker-go"]')!.addEventListener("click", geocode);
     (el('[data-role="acker-q"]') as HTMLInputElement).addEventListener("keydown", (e: any) => { if (e.key === "Enter") geocode(); });
+    // Karten-Anzeigeschalter (aus der Karte ins Panel verlegt)
+    el('[data-role="ctrl-fit"]')?.addEventListener("click", fitAll);
+    el('[data-role="ctrl-labels"]')?.addEventListener("click", () => {
+      labelsOn = !labelsOn;
+      el('[data-role="ctrl-labels"]')?.classList.toggle("on", labelsOn);
+      redrawAll();
+    });
+    el('[data-role="ctrl-beds"]')?.addEventListener("click", () => {
+      bedsGlobalOn = !bedsGlobalOn;
+      el('[data-role="ctrl-beds"]')?.classList.toggle("on", bedsGlobalOn);
+      redrawAll();
+    });
+    el('[data-role="ctrl-basemap"]')?.addEventListener("click", switchBasemap);
     document.addEventListener("keydown", (e: any) => {
       if (!drawing) return;
       if (e.key === "Backspace") { e.preventDefault(); undoLastPoint(); }
@@ -1097,8 +1150,9 @@ export function initAcker(container: Element | null, services: Services): void {
     try { const r = await listKulturen(); kulturen = r?.rows || []; } catch { kulturen = []; }
   }
   async function loadAnbau() {
-    if (getActiveDriverKey() !== "sqlite") { anbauRows = []; return; }
-    try { const r = await listAnbau({ flaecheTyp: "acker" }); anbauRows = r?.rows || []; } catch { anbauRows = []; }
+    if (getActiveDriverKey() !== "sqlite") { anbauRows = []; massRows = []; return; }
+    try { const r = await listAnbau(); anbauRows = r?.rows || []; } catch { anbauRows = []; }
+    try { const r = await listMassnahmen(); massRows = r?.rows || []; } catch { massRows = []; }
   }
   async function loadFields() {
     if (getActiveDriverKey() !== "sqlite") return;
@@ -1165,6 +1219,35 @@ function renderShell(): string {
     .acker-angle-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
     .acker-align{display:inline-flex;align-items:center;gap:4px;font-size:11px;border:1px solid var(--border-1);background:var(--surface-1);color:var(--text-muted);border-radius:7px;padding:4px 8px;cursor:pointer;white-space:nowrap}
     .acker-align:hover{background:var(--surface-3);color:#15803d;border-color:#86efac}
+    /* Karten-Anzeigeschalter im Panel (statt schwebender Icons) */
+    .acker-mapctrls{display:flex;gap:6px;margin-top:8px}
+    .acker-mapctrls button{flex:1;height:34px;border:1px solid var(--border-1);background:var(--surface-1);color:var(--text-muted);border-radius:8px;cursor:pointer;font-size:15px;display:inline-flex;align-items:center;justify-content:center}
+    .acker-mapctrls button:hover{background:var(--surface-3);color:var(--text)}
+    .acker-mapctrls button.on{background:#dcfce7;color:#15803d;border-color:#86efac}
+    /* Info-Karte (Klick auf Fläche/Gewächshaus) – Overlay im Karten-Container */
+    .acker-info{position:absolute;top:12px;left:52px;z-index:1000;width:270px;max-width:calc(100% - 64px);background:#fff;border:1px solid #d3dce4;border-radius:13px;box-shadow:0 12px 32px rgba(15,23,42,.24);padding:12px 13px;font-size:13px;color:#152230}
+    .acker-info .ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+    .acker-info .ai-title b{font-size:15px;font-weight:700;display:block;line-height:1.2}
+    .acker-info .ai-badge{font-size:11px;color:#0f766e;background:rgba(16,163,74,.1);border-radius:6px;padding:1px 7px;display:inline-block;margin-top:3px}
+    .acker-info .ai-x{border:0;background:transparent;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px;line-height:1}
+    .acker-info .ai-x:hover{color:#334155}
+    .acker-info .ai-row{display:flex;gap:9px;align-items:flex-start;margin:6px 0}
+    .acker-info .ai-dot{width:12px;height:12px;border-radius:50%;flex:none;margin-top:3px}
+    .acker-info .ai-crop{font-size:14.5px;font-weight:700;line-height:1.15}
+    .acker-info .ai-crop.muted{color:#64748b;font-weight:600;font-size:13.5px}
+    .acker-info .ai-sub{font-size:12px;color:#64748b;margin-top:1px}
+    .acker-info .ai-next{font-size:12px;color:#475569;margin:3px 0 2px}
+    .acker-info .ai-next b{color:#152230}
+    .acker-info .ai-metrics{display:flex;gap:12px;margin:8px 0;padding:7px 0;border-top:1px solid #eef2f6;border-bottom:1px solid #eef2f6;font-size:12px;color:#64748b}
+    .acker-info .ai-metrics b{color:#15803d;font-size:14px}
+    .acker-info .ai-tasks{font-size:12.5px;color:#64748b;margin:7px 0 0;display:flex;align-items:center;gap:6px}
+    .acker-info .ai-tasks.has{color:#b45309;font-weight:600}
+    .acker-info .ai-tasks i{font-size:14px}
+    .acker-info .ai-actions{display:flex;gap:7px;margin-top:10px}
+    .acker-info .ai-btn{flex:1;border:1px solid #d3dce4;background:#fff;color:#334155;border-radius:8px;padding:7px 8px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
+    .acker-info .ai-btn:hover{background:#eef2f6}
+    .acker-info .ai-btn.primary{background:#16a34a;border-color:#16a34a;color:#fff}
+    .acker-info .ai-btn.primary:hover{background:#15803d}
     .acker-fbody{display:none;padding:0 10px 10px;border-top:1px solid var(--border-1)}
     .acker-field.open .acker-fbody{display:block}
     .acker-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
@@ -1237,6 +1320,12 @@ function renderShell(): string {
             <button class="btn btn-psm-secondary-outline" data-role="acker-go">Suchen</button>
           </div>
           <button class="btn btn-psm-primary" style="width:100%" data-role="acker-draw">+ Neue Fläche zeichnen</button>
+          <div class="acker-mapctrls">
+            <button data-role="ctrl-fit" title="Alle Flächen anzeigen"><i class="bi bi-arrows-fullscreen"></i></button>
+            <button data-role="ctrl-labels" class="on" title="Beschriftungen ein/aus"><i class="bi bi-tag"></i></button>
+            <button data-role="ctrl-beds" class="on" title="Beete-Detail ein/aus"><i class="bi bi-grid-3x3"></i></button>
+            <button data-role="ctrl-basemap" title="Kartentyp (Satellit/OSM)"><i class="bi bi-layers"></i></button>
+          </div>
           <div class="acker-banner" data-role="acker-banner">
             <b>Ecke für Ecke anklicken</b> – die Vorschau folgt dem Cursor. Zum Abschließen den <b>ersten Punkt</b> anklicken (oder <b>Enter</b>).<br>
             <span style="opacity:.8">Rechtsklick oder <b>Backspace</b> = letzten Punkt zurück · <b>Esc</b> = abbrechen.</span>

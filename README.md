@@ -126,6 +126,30 @@ sind die relationalen Schlüssel, die ein Backend mit echten FKs absichern würd
 Wetter wird zum server-seitig gecachten Proxy. **Wird der Worker später durch einen HTTP-Client
 ersetzt, ist das ein Ein-Schicht-Wechsel in `storage/sqlite.ts` – die Feature-UIs bleiben unverändert.**
 
+## 🗺️ Acker-Karte (`features/acker/`)
+
+Erster Reiter im Acker-Bereich – Leaflet (lazy) auf Satellit/OSM. **Bewusst aufgeräumt:** keine
+schwebende Icon-Leiste mehr; die Anzeige-Schalter (alle anzeigen · Beschriftungen · Beete-Detail ·
+Kartentyp) sitzen im linken Panel.
+
+- **Flächen zeichnen:** Ecke für Ecke klicken mit **Live-Vorschau** (folgt dem Cursor, „laufende"
+  Linie), **Live-Anzeige** Punkte + ~Fläche, **Schnapp** am ersten Punkt zum Schließen. Hilfslayer sind
+  `interactive:false` (sonst „schlucken" sie Klicks). Backspace/Rechtsklick = Punkt zurück.
+- **Beete vs. Wege:** Beete = **solide** in Flächenfarbe mit heller Trennkante; der Umriss füllt im
+  Detail NICHT → die Weg-Lücken zeigen den Boden. Beete erscheinen erst, wenn Beet **und** Weg sichtbar
+  sind (LOD in `bedsVisibleFor`), sonst ruhige Übersichts-Füllung. `computeBeds` (turf) erzeugt die
+  Streifen; **`angle` ⇒ Beet-Peilung = 90°+angle** (empirisch); „**Beete an Fläche ausrichten**" setzt
+  `angle` parallel zur längsten Kante.
+- **Bewegen & bearbeiten:** ausgewählte Fläche per Maus **ziehen = ganzes Polygon verschieben**
+  (ideal zum Vergleichen von Kopien); Eckpunkte als Handles; **Parameter-Eingaben aktualisieren live
+  OHNE Panel-Neuaufbau** (sonst verliert der Slider den Fokus / „springt").
+- **Info-Karte (zentrale DB!):** Klick auf eine **Fläche ODER ein Gewächshaus** öffnet oben links eine
+  Info-Karte mit **aktueller Kultur · Pflanz-/Ernte-Datum · nächster Kultur · Beete/Beetmeter/Pflanzen ·
+  offenen Aufgaben** und Sprung in die Kulturführung. Quelle ist **dieselbe zentrale Belegung**
+  (`anbau_kultur`/`massnahme`) über `(flaeche_typ, flaeche_id)` – `acker` = gezeichnete Fläche,
+  `haus` = `gps_points`. **So liest jede neue Funktion dieselben zentralen Tabellen** (Karte importiert
+  `unitCrops`/`cropColor` aus `kultur/model`). Das Karten-Label zeigt zusätzlich die Kultur je Fläche.
+
 ## 🗄️ Daten- & Speicher-Modell
 
 - **Worker** (`storage/sqliteWorker.js`): SQLite-WASM (`@sqlite.org/sqlite-wasm` via CDN), In-Memory-DB,
