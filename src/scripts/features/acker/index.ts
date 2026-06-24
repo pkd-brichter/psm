@@ -251,31 +251,38 @@ export function initAcker(container: Element | null, services: Services): void {
   }
 
   // ---------- Rendern (Karte) ----------
-  // Outline-Stil: im Detail-Modus liefern die Beete die Füllung (Outline fast
-  // transparent); im Übersichts-Modus (rausgezoomt) füllt die Outline selbst,
-  // damit kleine Flächen nicht zu 110 winzigen Polygonen zerfallen.
+  // Outline-Stil: im Detail-Modus liefern die Beete die Füllung, der Umriss ist
+  // OHNE Füllung – so zeigen die Weg-Lücken zwischen den Beeten den Boden
+  // (Satellit) und man unterscheidet klar: farbig = Beet, Lücke = Weg.
+  // Im Übersichts-Modus (rausgezoomt) füllt der Umriss selbst (eine ruhige Fläche).
   const styleOutline = (fl: any, sel: boolean, detail: boolean) => ({
     color: fl.color,
-    weight: sel ? 3 : 2,
+    weight: sel ? 3.5 : 2.5,
     fillColor: fl.color,
-    fillOpacity: detail ? (sel ? 0.04 : 0.1) : sel ? 0.32 : 0.22,
-    dashArray: sel ? null : detail ? "5 5" : null,
+    fillOpacity: detail ? 0 : sel ? 0.3 : 0.18,
+    dashArray: null,
   });
-  // Beet-Stil: alternierende Deckkraft = Reihen-Optik (kein gleichförmiges
-  // Rauschen); ausgewählte Fläche kräftig + weiße Trennfuge, andere dezent.
-  const bedStyle = (fl: any, idx: number, sel: boolean) => {
-    const alt = idx % 2 === 0;
-    if (sel)
-      return { color: "#ffffff", weight: 0.7, opacity: 0.85, fillColor: fl.color, fillOpacity: alt ? 0.78 : 0.52 };
-    return { color: fl.color, weight: 0, fillColor: fl.color, fillOpacity: alt ? 0.5 : 0.32 };
-  };
+  // Beet-Stil: SOLIDE, gleichmäßige Füllung in Flächenfarbe + dünne helle
+  // Trennkante. KEINE alternierende Deckkraft mehr (das sah aus wie Rauschen).
+  // Die Weg-Lücken bleiben offen → klar: gefüllt = Beet, Lücke dazwischen = Weg.
+  const bedStyle = (fl: any, _idx: number, sel: boolean) => ({
+    color: "#ffffff",
+    weight: sel ? 1 : 0.7,
+    opacity: 0.9,
+    fillColor: fl.color,
+    fillOpacity: sel ? 0.9 : 0.78,
+  });
 
   // Soll diese Fläche ihre einzelnen Beete zeichnen? Nur wenn global aktiv,
-  // nicht für diese Fläche ausgeblendet, und Beete breit genug am Bildschirm.
+  // nicht ausgeblendet, UND Beet und Weg am Bildschirm klar sichtbar sind –
+  // sonst verschwimmt es zum Streifenmuster und wir zeigen die Übersichts-Füllung.
   function bedsVisibleFor(fl: any): boolean {
     if (!bedsGlobalOn || fl.bedsHidden) return false;
-    const bedPx = (fl.params?.bedW || 0) / metersPerPixel();
-    return bedPx >= 2.2;
+    const mpp = metersPerPixel();
+    const bedPx = (fl.params?.bedW || 0) / mpp;
+    const pathPx = (fl.params?.pathW || 0) / mpp;
+    const pathOk = (fl.params?.pathW || 0) <= 0.001 || pathPx >= 1.2;
+    return bedPx >= 4 && pathOk;
   }
 
   function clearFieldLayers(fl: any) {
@@ -760,21 +767,66 @@ export function initAcker(container: Element | null, services: Services): void {
   }
 
   // ---------- Zeichnen ----------
-  let drawing = false; let pts: any[] = []; let temp: any = null; let dots: any[] = [];
+  let drawing = false; let pts: any[] = []; let preview: any = null; let dots: any[] = [];
   let keySeq = 0;
+  function clearDrawTemp() {
+    if (preview) { map.removeLayer(preview); preview = null; }
+    dots.forEach((d) => map.removeLayer(d)); dots = []; pts = [];
+  }
   function setDraw(on: boolean) {
     drawing = on;
     el('[data-role="acker-banner"]')!.style.display = on ? "block" : "none";
     (el('[data-role="acker-draw"]') as HTMLElement).style.display = on ? "none" : "block";
     map.getContainer().style.cursor = on ? "crosshair" : "";
-    if (!on) { if (temp) map.removeLayer(temp); dots.forEach((d) => map.removeLayer(d)); temp = null; dots = []; pts = []; }
+    if (on) { map.on("mousemove", onMapMove); }
+    else { map.off("mousemove", onMapMove); clearDrawTemp(); }
+  }
+  // Live-Vorschau: das Polygon aus den gesetzten Punkten + (optional) der Cursor
+  // als nächster Punkt. WICHTIG interactive:false – sonst „schluckt" das
+  // Vorschau-Polygon Klicks und Punkte scheinen zu fehlen / komisch zu sitzen.
+  function drawPreview(cursor?: any) {
+    const ring = cursor ? [...pts, [cursor.lat, cursor.lng]] : pts;
+    if (ring.length < 2) { if (preview) { map.removeLayer(preview); preview = null; } return; }
+    if (!preview) {
+      preview = L.polygon(ring, {
+        interactive: false, color: "#22c55e", weight: 2.5,
+        fillColor: "#22c55e", fillOpacity: 0.18, dashArray: "6 5",
+      }).addTo(map);
+    } else preview.setLatLngs(ring);
+  }
+  // Punkt-Marker: nicht-interaktiv (außer dem ersten) – sonst fangen sie Klicks
+  // ab und das nächste Setzen schlägt fehl. Der erste Punkt schließt das Polygon.
+  function addDot(latlng: any, isFirst: boolean) {
+    const d = L.circleMarker(latlng, {
+      radius: isFirst ? 7 : 5, color: "#fff", fillColor: isFirst ? "#16a34a" : "#22c55e",
+      fillOpacity: 1, weight: 2, interactive: isFirst, bubblingMouseEvents: false,
+    }).addTo(map);
+    if (isFirst) {
+      d.bindTooltip("Zum Schließen anklicken", { direction: "top" });
+      d.on("click", (ev: any) => { L.DomEvent.stop(ev); if (pts.length >= 3) finishDraw(); });
+    }
+    dots.push(d);
   }
   function onMapClick(e: any) {
     if (!drawing) return;
+    // Klick nahe dem ersten Punkt schließt das Polygon (Standard-UX).
+    if (pts.length >= 3) {
+      const p0 = map.latLngToContainerPoint(L.latLng(pts[0][0], pts[0][1]));
+      const pc = map.latLngToContainerPoint(e.latlng);
+      if (p0.distanceTo(pc) <= 14) { finishDraw(); return; }
+    }
     pts.push([e.latlng.lat, e.latlng.lng]);
-    dots.push(L.circleMarker(e.latlng, { radius: 4, color: "#22c55e", fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(map));
-    if (!temp) temp = L.polyline(pts, { color: "#22c55e", weight: 2, dashArray: "5 5" }).addTo(map);
-    else temp.setLatLngs(pts);
+    addDot(e.latlng, pts.length === 1);
+    drawPreview();
+  }
+  function onMapMove(e: any) {
+    if (!drawing || !pts.length) return;
+    drawPreview(e.latlng);
+  }
+  function undoLastPoint() {
+    if (!pts.length) return;
+    pts.pop(); const d = dots.pop(); if (d) map.removeLayer(d);
+    drawPreview();
   }
   function finishDraw() {
     if (pts.length < 3) { toast.warning("Mindestens 3 Punkte setzen."); return; }
@@ -863,7 +915,10 @@ export function initAcker(container: Element | null, services: Services): void {
     map.addControl(new Toolbar());
 
     map.on("click", onMapClick);
-    map.on("contextmenu", (e: any) => { if (!drawing) openMapMenu(e); });
+    map.on("contextmenu", (e: any) => {
+      if (drawing) { L.DomEvent.preventDefault?.(e.originalEvent || e); undoLastPoint(); return; }
+      openMapMenu(e);
+    });
     // LOD: bei Zoomwechsel nur betroffene Flächen neu zeichnen (Übersicht ↔ Detail)
     map.on("zoomend", lodRedraw);
 
@@ -875,7 +930,7 @@ export function initAcker(container: Element | null, services: Services): void {
     (el('[data-role="acker-q"]') as HTMLInputElement).addEventListener("keydown", (e: any) => { if (e.key === "Enter") geocode(); });
     document.addEventListener("keydown", (e: any) => {
       if (!drawing) return;
-      if (e.key === "Backspace") { e.preventDefault(); pts.pop(); const d = dots.pop(); if (d) map.removeLayer(d); if (temp) temp.setLatLngs(pts); }
+      if (e.key === "Backspace") { e.preventDefault(); undoLastPoint(); }
       if (e.key === "Enter") finishDraw();
       if (e.key === "Escape") setDraw(false);
     });
@@ -933,6 +988,12 @@ function renderShell(): string {
     .acker-totals{background:var(--surface-2,rgba(255,255,255,.04));border:1px solid var(--border-1);border-radius:10px;padding:12px;margin-bottom:12px}
     .acker-totals .t-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
     .acker-totals .big{font-size:20px;font-weight:700;color:#22c55e}
+    .acker-legend{display:flex;align-items:center;gap:13px;margin-top:9px;padding-top:8px;border-top:1px solid var(--border-1);font-size:11.5px;color:var(--text-muted)}
+    .acker-legend .lg{display:inline-flex;align-items:center;gap:5px}
+    .acker-legend .lg i{width:17px;height:11px;border-radius:3px;display:inline-block;flex:none}
+    .acker-legend .lg i.bed{background:#22c55e;box-shadow:inset 0 0 0 1px #fff}
+    .acker-legend .lg i.path{background:transparent;border:1px dashed var(--text-dim,#64748b)}
+    .acker-legend .lg-hint{margin-left:auto;font-size:10px;color:var(--text-dim)}
     .acker-empty{color:var(--text-muted,#94a3b8);font-size:13px;text-align:center;padding:22px 8px;line-height:1.5}
     .acker-field{border:1px solid var(--border-1);border-radius:10px;margin-bottom:10px;overflow:hidden}
     .acker-field.sel{border-color:#22c55e;box-shadow:0 0 0 1px #22c55e}
@@ -1007,7 +1068,8 @@ function renderShell(): string {
           </div>
           <button class="btn btn-psm-primary" style="width:100%" data-role="acker-draw">+ Neue Fläche zeichnen</button>
           <div class="acker-banner" data-role="acker-banner">
-            Auf die Karte klicken setzt Eckpunkte. <b>Backspace</b> = letzten Punkt löschen, <b>Enter</b> = fertig.
+            <b>Ecke für Ecke anklicken</b> – die Vorschau folgt dem Cursor. Zum Abschließen den <b>ersten Punkt</b> anklicken (oder <b>Enter</b>).<br>
+            <span style="opacity:.8">Rechtsklick oder <b>Backspace</b> = letzten Punkt zurück · <b>Esc</b> = abbrechen.</span>
             <div class="row">
               <button class="btn btn-sm btn-psm-primary" data-role="acker-finish">✓ Fertig</button>
               <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-cancel">Abbrechen</button>
@@ -1018,6 +1080,11 @@ function renderShell(): string {
             <div class="t-row"><span>Beete gesamt</span><b data-t="beds">–</b></div>
             <div class="t-row"><span>Beetmeter gesamt</span><b data-t="meters">–</b></div>
             <div class="t-row" style="margin-top:4px"><span>Pflanzen gesamt</span><b class="big" data-t="plants">–</b></div>
+            <div class="acker-legend">
+              <span class="lg"><i class="bed"></i>Beet</span>
+              <span class="lg"><i class="path"></i>Weg</span>
+              <span class="lg-hint">beim Reinzoomen sichtbar</span>
+            </div>
           </div>
           <div class="acker-export-box" style="margin:12px 0">
             <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-export" style="width:100%">
