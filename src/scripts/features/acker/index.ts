@@ -99,7 +99,7 @@ export function initAcker(container: Element | null, services: Services): void {
   const saveTimers = new Map<string, any>();
   let standorteLayer: any = null;
   let labelLayer: any = null;
-  let baseLayers: { sat: any; osm: any } = { sat: null, osm: null };
+  let baseLayers: { sat: any; dop: any; osm: any } = { sat: null, dop: null, osm: null };
   // Anzeige-Schalter (Client-seitig, nicht persistiert)
   let labelsOn = true;
   let bedsGlobalOn = true;
@@ -797,10 +797,21 @@ export function initAcker(container: Element | null, services: Services): void {
     ], `Eckpunkt ${idx + 1}`);
   }
 
+  // Karten-Hintergrund durchschalten: Satellit (Esri, weltweit) → Luftbild BW
+  // (LGL DOP20, sehr scharf, nur BW) → OSM (Straßenkarte) → zurück zu Satellit.
   function switchBasemap() {
-    if (!baseLayers.sat || !baseLayers.osm) return;
-    if (map.hasLayer(baseLayers.sat)) { map.removeLayer(baseLayers.sat); baseLayers.osm.addTo(map); toast.info("Karte: OSM"); }
-    else { map.removeLayer(baseLayers.osm); baseLayers.sat.addTo(map); toast.info("Karte: Satellit"); }
+    const { sat, dop, osm } = baseLayers;
+    if (!sat || !osm) return;
+    const order = [
+      { layer: sat, label: "Satellit (weltweit)" },
+      { layer: dop, label: "Luftbild BW – scharf (20 cm)" },
+      { layer: osm, label: "Straßenkarte (OSM)" },
+    ].filter((o) => o.layer);
+    const curIdx = order.findIndex((o) => map.hasLayer(o.layer));
+    const next = order[(curIdx + 1) % order.length];
+    order.forEach((o) => { if (map.hasLayer(o.layer)) map.removeLayer(o.layer); });
+    next.layer.addTo(map);
+    toast.info("Karte: " + next.label);
   }
 
   function openMapMenu(e: any) {
@@ -811,7 +822,7 @@ export function initAcker(container: Element | null, services: Services): void {
       { icon: '<i class="bi bi-crosshair"></i>', label: "Hierhin zentrieren", action: () => map.panTo(ll) },
       { sep: true },
       { icon: '<i class="bi bi-arrows-fullscreen"></i>', label: "Alle Flächen anzeigen", disabled: !fields.some((f) => f.latlngs?.length >= 3), action: fitAll },
-      { icon: '<i class="bi bi-layers"></i>', label: "Kartentyp wechseln (Satellit/OSM)", action: switchBasemap },
+      { icon: '<i class="bi bi-layers"></i>', label: "Kartentyp wechseln (Satellit / Luftbild BW / OSM)", action: switchBasemap },
       { sep: true },
       { icon: '<i class="bi bi-geo-alt"></i>', label: "Koordinaten kopieren", action: async () => {
           try { await navigator.clipboard.writeText(`${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)}`); toast.success("Koordinaten kopiert."); }
@@ -1301,8 +1312,14 @@ export function initAcker(container: Element | null, services: Services): void {
     map = L.map(mapEl, { doubleClickZoom: false, zoomControl: true, attributionControl: true }).setView([47.818, 8.976], 17);
     const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles © Esri" }).addTo(map);
+    // Amtliche Luftbilder Baden-Württemberg (LGL DOP20, 20 cm, Open Data, kein API-Key).
+    // Deutlich schärfer als Esri – allerdings nur innerhalb BW; daher nicht Default.
+    const dop = L.tileLayer.wms("https://owsproxy.lgl-bw.de/owsproxy/ows/WMS_LGL-BW_ATKIS_DOP_20_C", {
+      layers: "IMAGES_DOP_20_RGB", format: "image/jpeg", transparent: false,
+      maxZoom: 21, maxNativeZoom: 20, attribution: "Luftbild © LGL-BW (dl-de/by-2-0)",
+    });
     const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
-    baseLayers = { sat, osm };
+    baseLayers = { sat, dop, osm };
     // Vorhandene Freiland-Standorte (Name + Koordinaten + Fläche) als Marker-Layer
     standorteLayer = L.layerGroup();
     renderStandorte();
@@ -1565,7 +1582,7 @@ function renderShell(): string {
             <button data-role="ctrl-fit" title="Alle Flächen anzeigen"><i class="bi bi-arrows-fullscreen"></i></button>
             <button data-role="ctrl-labels" class="on" title="Beschriftungen ein/aus"><i class="bi bi-tag"></i></button>
             <button data-role="ctrl-beds" class="on" title="Beete-Detail ein/aus"><i class="bi bi-grid-3x3"></i></button>
-            <button data-role="ctrl-basemap" title="Kartentyp (Satellit/OSM)"><i class="bi bi-layers"></i></button>
+            <button data-role="ctrl-basemap" title="Kartentyp (Satellit / Luftbild BW / OSM)"><i class="bi bi-layers"></i></button>
           </div>
           <div class="acker-banner" data-role="acker-banner">
             <b>Ecke für Ecke anklicken</b> – die Vorschau folgt dem Cursor. Zum Abschließen den <b>ersten Punkt</b> anklicken (oder <b>Enter</b>).<br>
