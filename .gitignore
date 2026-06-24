@@ -47,3 +47,4 @@ pflanzenschutz-db/
 
 # lokale Quell-Dokumente / Scans (groß)
 /documents/
+wasm/psm-geo/target/
