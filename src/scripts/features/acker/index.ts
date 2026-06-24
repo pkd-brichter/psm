@@ -8,10 +8,12 @@ import {
   upsertAckerflaeche,
   deleteAckerflaeche,
   listKulturen,
+  listAnbau,
   persistSqliteDatabaseFile,
 } from "@scripts/core/storage/sqlite";
 import { getActiveDriverKey } from "@scripts/core/storage";
 import { extractSliceItems, updateSlice } from "@scripts/core/state";
+import { unitCrops, cropColor } from "@scripts/features/kultur/model";
 
 interface Services {
   state: { getState: () => any; subscribe: (fn: (s: any) => void) => void };
@@ -56,6 +58,17 @@ export function initAcker(container: Element | null, services: Services): void {
   // Anzeige-Schalter (Client-seitig, nicht persistiert)
   let labelsOn = true;
   let bedsGlobalOn = true;
+  // Aktuelle Kultur-Belegung je Fläche (aus der Kulturführung) – nur Anzeige.
+  let anbauRows: any[] = [];
+  // Welche Kultur „wächst" gerade auf dieser Fläche? Bevorzugt die echte,
+  // datierte Belegung aus der Kulturführung; sonst das einfache Kultur-Etikett.
+  function fieldCrop(fl: any): { name: string; color: string | null } | null {
+    const rows = anbauRows.filter((a) => String(a.flaecheId) === String(fl.id));
+    const cur = unitCrops(rows).current;
+    if (cur && cur.kultur) return { name: cur.kultur, color: cropColor(cur) };
+    if (fl.kultur) return { name: fl.kultur, color: null };
+    return null;
+  }
 
   // Export der Flächen + Standorte als GeoJSON (WGS84/CRS84) – Standard-Format
   // für QGIS, FMIS und (via Shapefile) Traktor-Terminals (ISOBUS/ISO-XML-Welt).
@@ -332,9 +345,13 @@ export function initAcker(container: Element | null, services: Services): void {
     let center: any;
     try { center = fl.outline.getBounds().getCenter(); } catch { return; }
     const plants = fl.result?.plants || 0;
+    const crop = fieldCrop(fl);
+    const cropHtml = crop
+      ? `<em class="cr" style="--cc:${escapeHtml(crop.color || "#16a34a")}"><span class="dot"></span>${escapeHtml(crop.name)}</em>`
+      : "";
     const html =
       `<div class="acker-flabel${sel ? " sel" : ""}" style="--fc:${fl.color}">` +
-      `<b>${escapeHtml(fl.name || "")}</b><i>${nf(plants)} Pfl.</i></div>`;
+      `<b>${escapeHtml(fl.name || "")}</b>${cropHtml}<i>${nf(plants)} Pfl.</i></div>`;
     fl.label = L.marker(center, {
       interactive: false,
       keyboard: false,
@@ -509,6 +526,24 @@ export function initAcker(container: Element | null, services: Services): void {
     recompute(fl);
     toast.info(`Beete-Ausrichtung: ${fl.params.angle}°`);
   }
+  // Beete parallel zur längsten Kante ausrichten (ein Klick statt Slider-Fummelei).
+  // Beet-Peilung = 90° + angle → angle = Kanten-Peilung − 90° (empirisch geprüft).
+  function alignBedsToField(fl: any) {
+    const ll = fl.latlngs || [];
+    if (ll.length < 2 || !turf) return;
+    let bestLen = -1, bearing = 0;
+    for (let i = 0; i < ll.length; i++) {
+      const a = ll[i], b = ll[(i + 1) % ll.length];
+      try {
+        const pa = turf.point([a[1], a[0]]), pb = turf.point([b[1], b[0]]);
+        const len = turf.distance(pa, pb);
+        if (len > bestLen) { bestLen = len; bearing = turf.bearing(pa, pb); }
+      } catch {}
+    }
+    fl.params.angle = ((Math.round(bearing - 90) % 180) + 180) % 180;
+    recompute(fl);
+    toast.success(`Beete an Fläche ausgerichtet (${fl.params.angle}°).`);
+  }
   function setColor(fl: any, color: string) { fl.color = color; drawField(fl); renderPanel(); persistField(fl); }
   function setKultur(fl: any, kultur: string | null) {
     fl.kultur = kultur || null;
@@ -614,6 +649,7 @@ export function initAcker(container: Element | null, services: Services): void {
       { sep: true },
       { icon: '<i class="bi bi-arrow-clockwise"></i>', label: "Beete drehen +15°", keepOpen: true, action: () => rotateField(fl, 15) },
       { icon: '<i class="bi bi-arrow-counterclockwise"></i>', label: "Beete drehen −15°", keepOpen: true, action: () => rotateField(fl, -15) },
+      { icon: '<i class="bi bi-bounding-box"></i>', label: "Beete an Fläche ausrichten", action: () => alignBedsToField(fl) },
       { icon: '<i class="bi bi-grid-3x3-gap"></i>', label: fl.bedsHidden ? "Beete einblenden" : "Beete ausblenden", action: () => toggleFieldBeds(fl) },
       { icon: '<i class="bi bi-bounding-box-circles"></i>', label: editing ? "Eckpunkte fertig" : "Eckpunkte bearbeiten", action: () => { if (editing) clearHandles(fl); else buildHandles(fl); } },
       { sep: true },
@@ -675,6 +711,37 @@ export function initAcker(container: Element | null, services: Services): void {
       .join("");
   }
 
+  // Kleine Kultur-Plakette für die Panel-Kopfzeile (was wächst hier?).
+  function cropChipHtml(fl: any): string {
+    const crop = fieldCrop(fl);
+    if (!crop) return "";
+    return `<span class="acker-cropchip" title="Kultur"><span class="dot" style="background:${escapeHtml(crop.color || "#94a3b8")}"></span>${escapeHtml(crop.name)}</span>`;
+  }
+  // Gesamt-Summen aktualisieren, ohne das Panel neu zu bauen.
+  function updateTotals() {
+    if (!totalsEl) return;
+    let A = 0, B = 0, M = 0, P = 0;
+    fields.forEach((fl) => { A += fl.result?.areaM2 || 0; B += fl.result?.beds?.length || 0; M += fl.result?.bedMeters || 0; P += fl.result?.plants || 0; });
+    const set = (sel: string, txt: string) => { const e = totalsEl!.querySelector(sel); if (e) e.textContent = txt; };
+    set('[data-t="area"]', nf(A) + " m² · " + nf(A / 10000, 3) + " ha");
+    set('[data-t="beds"]', nf(B));
+    set('[data-t="meters"]', nf(M) + " m");
+    set('[data-t="plants"]', nf(P));
+  }
+  // Nur die Ergebniszahlen EINER Fläche im Panel aktualisieren – ohne die ganze
+  // Liste neu zu rendern (sonst verliert der Slider/das Eingabefeld beim Tippen
+  // bzw. Ziehen den Fokus und „springt").
+  function updateFieldResults(d: HTMLElement, fl: any) {
+    const r = fl.result || {};
+    const stat = d.querySelector(".acker-stat"); if (stat) stat.textContent = nf(r.plants || 0) + " Pfl.";
+    const b = d.querySelectorAll(".acker-res .r b");
+    if (b[0]) b[0].textContent = nf(r.areaM2 || 0) + " m² · " + nf((r.areaM2 || 0) / 10000, 3) + " ha";
+    if (b[1]) b[1].textContent = nf(r.beds?.length || 0);
+    if (b[2]) b[2].textContent = nf(r.bedMeters || 0) + " m";
+    if (b[3]) b[3].textContent = nf(r.plants || 0);
+    updateTotals();
+  }
+
   function renderPanel() {
     if (!listEl || !emptyEl || !totalsEl) return;
     emptyEl.style.display = fields.length ? "none" : "block";
@@ -691,6 +758,7 @@ export function initAcker(container: Element | null, services: Services): void {
         <div class="acker-fhead">
           <span class="acker-swatch" style="background:${fl.color}"></span>
           <input class="acker-name" value="${escapeHtml(fl.name)}" />
+          ${cropChipHtml(fl)}
           <span class="acker-stat">${nf(fl.result?.plants || 0)} Pfl.</span>
         </div>
         <div class="acker-fbody">
@@ -701,7 +769,12 @@ export function initAcker(container: Element | null, services: Services): void {
             <label class="acker-fld">Wegbreite (m)<input data-k="pathW" type="number" step="0.05" min="0" value="${fl.params.pathW}"/></label>
             <label class="acker-fld">Reihenabstand (m)<input data-k="rowSp" type="number" step="0.05" min="0.05" value="${fl.params.rowSp}"/></label>
             <label class="acker-fld">Pflanzabstand (m)<input data-k="inRowSp" type="number" step="0.05" min="0.05" value="${fl.params.inRowSp}"/></label>
-            <label class="acker-fld span2">Ausrichtung der Beete: ${fl.params.angle}°<input data-k="angle" type="range" min="0" max="180" step="5" value="${fl.params.angle}"/></label>
+            <div class="acker-fld span2">
+              <div class="acker-angle-head"><span>Ausrichtung der Beete: <b>${fl.params.angle}°</b></span>
+                <button class="acker-align" data-act="align" type="button" title="Beete parallel zur längsten Kante ausrichten"><i class="bi bi-bounding-box"></i> an Fläche</button>
+              </div>
+              <input data-k="angle" type="range" min="0" max="180" step="5" value="${fl.params.angle}"/>
+            </div>
           </div>
           <div class="acker-res">
             <div class="r"><span>Fläche</span><b>${nf(fl.result?.areaM2 || 0)} m² · ${nf((fl.result?.areaM2 || 0) / 10000, 3)} ha</b></div>
@@ -726,19 +799,32 @@ export function initAcker(container: Element | null, services: Services): void {
       const nameInp = d.querySelector(".acker-name") as HTMLInputElement;
       nameInp.addEventListener("input", (e: any) => { fl.name = e.target.value; persistField(fl); });
       d.querySelectorAll("[data-k]").forEach((inp: any) => {
-        inp.addEventListener("input", (e: any) => {
-          const k = inp.dataset.k;
-          if (k === "kultur") {
+        const k = inp.dataset.k;
+        if (k === "kultur") {
+          inp.addEventListener("input", (e: any) => {
             fl.kultur = e.target.value || null;
             fl.eppoCode = kulturen.find((x) => x.kultur === fl.kultur)?.eppoCode || null;
-            persistField(fl); return;
-          }
-          if (k === "standortId") { fl.standortId = e.target.value || null; persistField(fl); return; }
+            drawField(fl); persistField(fl); // Karten-Label/Plakette aktualisieren
+          });
+          return;
+        }
+        if (k === "standortId") {
+          inp.addEventListener("input", (e: any) => { fl.standortId = e.target.value || null; persistField(fl); });
+          return;
+        }
+        // Zahl-/Slider-Parameter: Beete + Zahlen LIVE aktualisieren, aber das Panel
+        // NICHT neu bauen (sonst verliert das Feld/der Slider den Fokus).
+        inp.addEventListener("input", (e: any) => {
           if (k === "angle") fl.params.angle = +e.target.value;
           else fl.params[k] = parseFloat(e.target.value) || 0;
-          recompute(fl);
+          fl.result = computeBeds(fl.latlngs, fl.params);
+          drawField(fl);
+          updateFieldResults(d, fl);
+          if (k === "angle") { const ah = d.querySelector(".acker-angle-head b"); if (ah) ah.textContent = fl.params.angle + "°"; }
+          persistField(fl);
         });
       });
+      d.querySelector('[data-act="align"]')?.addEventListener("click", () => alignBedsToField(fl));
       d.querySelector('[data-act="del"]')!.addEventListener("click", () => removeField(fl._key));
       d.querySelector('[data-act="zoom"]')!.addEventListener("click", () => zoomToField(fl));
       d.querySelector('[data-act="dup"]')!.addEventListener("click", () => duplicateField(fl));
@@ -1001,6 +1087,7 @@ export function initAcker(container: Element | null, services: Services): void {
     });
 
     await loadKulturen();
+    await loadAnbau();
     await loadFields();
     setTimeout(() => map.invalidateSize(), 60);
   }
@@ -1008,6 +1095,10 @@ export function initAcker(container: Element | null, services: Services): void {
   async function loadKulturen() {
     if (getActiveDriverKey() !== "sqlite") return;
     try { const r = await listKulturen(); kulturen = r?.rows || []; } catch { kulturen = []; }
+  }
+  async function loadAnbau() {
+    if (getActiveDriverKey() !== "sqlite") { anbauRows = []; return; }
+    try { const r = await listAnbau({ flaecheTyp: "acker" }); anbauRows = r?.rows || []; } catch { anbauRows = []; }
   }
   async function loadFields() {
     if (getActiveDriverKey() !== "sqlite") return;
@@ -1034,7 +1125,10 @@ export function initAcker(container: Element | null, services: Services): void {
   }
 
   services.state.subscribe((s: any) => {
-    if (s?.app?.activeSection === "acker") void ensureMap();
+    if (s?.app?.activeSection !== "acker") return;
+    if (!mapReady) { void ensureMap(); return; }
+    // Zurück auf der Karte: aktuelle Kultur-Belegung neu laden + Labels/Panel auffrischen.
+    void (async () => { await loadAnbau(); redrawAll(); renderPanel(); setTimeout(() => map && map.invalidateSize(), 60); })();
   });
   renderPanel();
 }
@@ -1066,6 +1160,11 @@ function renderShell(): string {
     .acker-swatch{width:14px;height:14px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.2)}
     .acker-name{flex:1;font-size:13.5px;font-weight:600;border:0;background:transparent;outline:none;color:var(--text);min-width:0}
     .acker-stat{font-size:12px;color:var(--text-muted,#94a3b8)}
+    .acker-cropchip{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text);background:var(--surface-2,rgba(255,255,255,.05));border:1px solid var(--border-1);border-radius:20px;padding:2px 9px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .acker-cropchip .dot{width:8px;height:8px;border-radius:50%;flex:none}
+    .acker-angle-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+    .acker-align{display:inline-flex;align-items:center;gap:4px;font-size:11px;border:1px solid var(--border-1);background:var(--surface-1);color:var(--text-muted);border-radius:7px;padding:4px 8px;cursor:pointer;white-space:nowrap}
+    .acker-align:hover{background:var(--surface-3);color:#15803d;border-color:#86efac}
     .acker-fbody{display:none;padding:0 10px 10px;border-top:1px solid var(--border-1)}
     .acker-field.open .acker-fbody{display:block}
     .acker-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
@@ -1089,6 +1188,8 @@ function renderShell(): string {
     .acker-flabel{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:0;white-space:nowrap;padding:3px 9px;border-radius:9px;background:rgba(255,255,255,.93);border:1.5px solid var(--fc,#3b82f6);box-shadow:0 1px 5px rgba(0,0,0,.28);line-height:1.15}
     .acker-flabel b{font-weight:700;font-size:12px;color:#1f2937}
     .acker-flabel i{font-style:normal;color:#15803d;font-weight:600;font-size:10.5px}
+    .acker-flabel .cr{font-style:normal;font-weight:700;font-size:10px;color:#fff;background:var(--cc,#16a34a);border-radius:5px;padding:1px 6px;margin:1px 0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .acker-flabel .cr .dot{display:none}
     .acker-flabel.sel{box-shadow:0 2px 9px rgba(0,0,0,.34);transform:translate(-50%,-50%) scale(1.05)}
     /* Floating-Toolbar */
     .acker-toolbar a{display:flex!important;align-items:center;justify-content:center;font-size:15px;color:#334155;background:#fff;width:30px;height:30px;line-height:30px}
