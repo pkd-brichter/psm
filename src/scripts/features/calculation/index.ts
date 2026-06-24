@@ -1872,6 +1872,11 @@ export function initCalculation(
     };
 
     const header = {
+      // Stabiler, geräteübergreifender Ausweis – EINMAL pro Berechnung vergeben,
+      // damit mehrfaches "Speichern" derselben Berechnung NICHT mehrere Zeilen
+      // erzeugt (Worker dedupliziert auf clientUuid). Jede neue Berechnung erhält
+      // eine neue UUID.
+      clientUuid: generateClientUuid(),
       ersteller,
       standort,
       kultur,

@@ -151,7 +151,21 @@ export async function shareMobileData(): Promise<void> {
         text: "Pflanzenschutz-Erfassung (ZIP inkl. Fotos) – am Desktop über Import/Merge einspielen.",
       });
       setUnsharedCount(0);
-      await clearFotosAfterSend();
+      // WICHTIG (Datenverlust-Schutz): nav.share "gelingt" bereits, wenn das
+      // Share-Sheet die Datei an eine Ziel-App (Mail/Files/WhatsApp) ÜBERGIBT –
+      // NICHT, wenn sie am PC ankommt und importiert wurde. Daher Fotos NICHT
+      // automatisch löschen, sondern nur nach ausdrücklicher Bestätigung.
+      const confirmDelete =
+        typeof window.confirm === "function"
+          ? window.confirm(
+              "Daten wurden geteilt.\n\nFotos jetzt vom Gerät löschen?\nNur bestätigen, wenn sie am PC bereits importiert wurden – sonst gehen sie verloren.",
+            )
+          : false;
+      if (confirmDelete) {
+        await clearFotosAfterSend();
+      } else {
+        toast.info("Geteilt. Fotos bleiben auf dem Gerät, bis du sie aufräumst.");
+      }
       return;
     } catch (err) {
       // Abbruch durch Nutzer ist kein Fehler.

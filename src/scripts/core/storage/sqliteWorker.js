@@ -3320,6 +3320,56 @@ async function applySchema() {
       throw error;
     }
   }
+
+  // Migration to version 24: persistente client_uuid-Spalte + DB-erzwungener
+  // Duplikatschutz (partieller UNIQUE-Index) für history und fotos.
+  // WICHTIG: vorhandene Duplikate werden VOR dem UNIQUE-Index entfernt, sonst
+  // schlägt CREATE UNIQUE INDEX fehl und blockiert das Öffnen der DB.
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  if (postMigrationVersion < 24) {
+    console.log("Migrating database to version 24 (client_uuid dedup)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      if (hasTable(db, "history")) {
+        if (!hasColumn(db, "history", "client_uuid")) {
+          db.exec("ALTER TABLE history ADD COLUMN client_uuid TEXT");
+        }
+        // Aus dem bestehenden header_json befüllen (json_extract liefert bei
+        // fehlendem/ungültigem JSON sicher NULL).
+        db.exec(
+          "UPDATE history SET client_uuid = json_extract(header_json, '$.clientUuid') WHERE client_uuid IS NULL AND header_json IS NOT NULL"
+        );
+        // Echte Duplikate (gleiche client_uuid) entfernen – kleinste id behalten.
+        db.exec(
+          "DELETE FROM history WHERE client_uuid IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM history WHERE client_uuid IS NOT NULL GROUP BY client_uuid)"
+        );
+        // Verwaiste Items aufräumen (falls Foreign-Keys/CASCADE nicht aktiv sind).
+        if (hasTable(db, "history_items")) {
+          db.exec("DELETE FROM history_items WHERE history_id NOT IN (SELECT id FROM history)");
+        }
+        db.exec(
+          "CREATE UNIQUE INDEX IF NOT EXISTS idx_history_client_uuid ON history(client_uuid) WHERE client_uuid IS NOT NULL"
+        );
+      }
+      if (hasTable(db, "fotos")) {
+        db.exec(
+          "DELETE FROM fotos WHERE client_uuid IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM fotos WHERE client_uuid IS NOT NULL GROUP BY client_uuid)"
+        );
+        // Alten, nicht-eindeutigen Index durch partiellen UNIQUE-Index ersetzen.
+        db.exec("DROP INDEX IF EXISTS idx_fotos_uuid");
+        db.exec(
+          "CREATE UNIQUE INDEX IF NOT EXISTS idx_fotos_uuid ON fotos(client_uuid) WHERE client_uuid IS NOT NULL"
+        );
+      }
+      db.exec("PRAGMA user_version = 24");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 24 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 24 failed:", error);
+      throw error;
+    }
+  }
 }
 
 /**
@@ -3483,13 +3533,13 @@ async function importSnapshot(snapshot) {
     // Import history (with normalized columns for EU compliance)
     if (snapshot.history && Array.isArray(snapshot.history)) {
       const historyStmt = db.prepare(`
-        INSERT INTO history (
-          created_at, header_json,
+        INSERT OR IGNORE INTO history (
+          created_at, client_uuid, header_json,
           ersteller, standort, kultur, eppo_code, bbch, datum, date_iso,
           uhrzeit, usage_type, area_ha, area_ar, area_sqm, water_volume,
           invekos, gps, gps_latitude, gps_longitude, gps_point_id,
           qs_maschine, qs_schaderreger, qs_verantwortlicher, qs_wetter, qs_behandlungsart
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const itemsStmt = db.prepare(`
         INSERT INTO history_items (
@@ -3516,6 +3566,7 @@ async function importSnapshot(snapshot) {
         historyStmt
           .bind([
             createdAt,
+            header.clientUuid || null,
             JSON.stringify(header),
             header.ersteller || null,
             header.standort || null,
@@ -3542,8 +3593,16 @@ async function importSnapshot(snapshot) {
             header.qsBehandlungsart || null,
           ])
           .step();
-        const historyId = db.selectValue("SELECT last_insert_rowid()");
+        // OR IGNORE kann den Eintrag (gleiche client_uuid) überspringen ->
+        // dann KEINE Items anhängen (sonst landen sie an der falschen Zeile).
+        const inserted = (db.selectValue("SELECT changes()") || 0) > 0;
+        const historyId = inserted
+          ? db.selectValue("SELECT last_insert_rowid()")
+          : null;
         historyStmt.reset();
+        if (!inserted) {
+          continue;
+        }
 
         const items =
           entry.items && Array.isArray(entry.items) ? entry.items : [];
@@ -3708,7 +3767,7 @@ async function exportSnapshot() {
   // Export history (using normalized columns for EU compliance)
   const historyMap = new Map();
   db.exec({
-    sql: `SELECT id, created_at, header_json,
+    sql: `SELECT id, created_at, header_json, client_uuid,
             ersteller, standort, kultur, eppo_code, bbch, datum, date_iso,
             uhrzeit, usage_type, area_ha, area_ar, area_sqm, water_volume,
             invekos, gps, gps_latitude, gps_longitude, gps_point_id,
@@ -3753,6 +3812,8 @@ async function exportSnapshot() {
           qsWetter: row.qs_wetter ?? header.qsWetter,
           qsBehandlungsart: row.qs_behandlungsart ?? header.qsBehandlungsart,
           savedAt: header.savedAt || row.created_at,
+          // Stabiler Ausweis fürs zuverlässige Dedup beim Import (Mobil -> PC).
+          clientUuid: row.client_uuid ?? header.clientUuid ?? null,
         },
         items: [],
       });
@@ -4192,6 +4253,7 @@ async function listHistoryPaged({
       SELECT
         history.id AS id,
         history.header_json AS header_json,
+        history.client_uuid AS client_uuid,
         history.created_at AS created_at,
         ${historyDateExpr} AS cursor_created_at,
         history.ersteller, history.standort, history.kultur, history.eppo_code, history.bbch,
@@ -4270,6 +4332,8 @@ async function listHistoryPaged({
       qsWetter: row.qs_wetter ?? header.qsWetter,
       qsBehandlungsart: row.qs_behandlungsart ?? header.qsBehandlungsart,
       savedAt: header.savedAt || row.created_at,
+      // Stabiler Ausweis -> Dedup-Schlüssel beim Import (gleiche Namensraum wie Export).
+      clientUuid: row.client_uuid ?? header.clientUuid ?? null,
     };
     if (includeItems) {
       entry.items = [];
@@ -4687,28 +4751,41 @@ async function appendFoto(payload = {}) {
        gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data, data_thumb)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  stmt
-    .bind([
-      clientUuid,
-      createdAt,
-      payload.entryUuid != null ? String(payload.entryUuid) : null,
-      payload.kategorie != null ? String(payload.kategorie) : null,
-      payload.titel != null ? String(payload.titel) : null,
-      payload.standort != null ? String(payload.standort) : null,
-      payload.kultur != null ? String(payload.kultur) : null,
-      payload.gpsLatitude ?? null,
-      payload.gpsLongitude ?? null,
-      payload.notiz != null ? String(payload.notiz) : null,
-      payload.device != null ? String(payload.device) : null,
-      payload.mime != null ? String(payload.mime) : "image/jpeg",
-      payload.width ?? null,
-      payload.height ?? null,
-      payload.bytes ?? null,
-      String(payload.data),
-      payload.thumb != null ? String(payload.thumb) : null,
-    ])
-    .step();
-  stmt.finalize();
+  try {
+    stmt
+      .bind([
+        clientUuid,
+        createdAt,
+        payload.entryUuid != null ? String(payload.entryUuid) : null,
+        payload.kategorie != null ? String(payload.kategorie) : null,
+        payload.titel != null ? String(payload.titel) : null,
+        payload.standort != null ? String(payload.standort) : null,
+        payload.kultur != null ? String(payload.kultur) : null,
+        payload.gpsLatitude ?? null,
+        payload.gpsLongitude ?? null,
+        payload.notiz != null ? String(payload.notiz) : null,
+        payload.device != null ? String(payload.device) : null,
+        payload.mime != null ? String(payload.mime) : "image/jpeg",
+        payload.width ?? null,
+        payload.height ?? null,
+        payload.bytes ?? null,
+        String(payload.data),
+        payload.thumb != null ? String(payload.thumb) : null,
+      ])
+      .step();
+    stmt.finalize();
+  } catch (error) {
+    try { stmt.finalize(); } catch (e) { /* ignore */ }
+    // UNIQUE-Index (gleiche client_uuid) -> als Duplikat behandeln.
+    if (clientUuid && /UNIQUE|constraint/i.test(String(error && error.message))) {
+      const existing = db.selectValue(
+        "SELECT id FROM fotos WHERE client_uuid = ? LIMIT 1",
+        [clientUuid]
+      );
+      if (existing != null) return { id: existing, duplicate: true };
+    }
+    throw error;
+  }
   const id = db.selectValue("SELECT last_insert_rowid()");
   return { id, duplicate: false };
 }
@@ -5100,14 +5177,14 @@ async function appendHistoryEntry(entry) {
   if (clientUuid) {
     try {
       const existingId = db.selectValue(
-        "SELECT id FROM history WHERE json_extract(header_json, '$.clientUuid') = ? LIMIT 1",
+        "SELECT id FROM history WHERE client_uuid = ? LIMIT 1",
         [clientUuid]
       );
       if (existingId != null) {
         return { id: existingId, duplicate: true };
       }
     } catch (e) {
-      /* json_extract nicht verfügbar -> Fallback ohne Worker-Dedup */
+      /* Spalte (noch) nicht vorhanden -> Fallback ohne Worker-Dedup */
     }
   }
 
@@ -5134,17 +5211,18 @@ async function appendHistoryEntry(entry) {
     // Insert with both normalized columns AND legacy JSON for backward compatibility
     const stmt = db.prepare(`
       INSERT INTO history (
-        created_at, header_json,
+        created_at, client_uuid, header_json,
         ersteller, standort, kultur, eppo_code, bbch, datum, date_iso,
         uhrzeit, usage_type, area_ha, area_ar, area_sqm, water_volume,
         invekos, gps, gps_latitude, gps_longitude, gps_point_id,
         qs_maschine, qs_schaderreger, qs_verantwortlicher, qs_wetter, qs_behandlungsart,
         company_name, company_address, company_headline, company_email
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt
       .bind([
         createdAt,
+        clientUuid,
         JSON.stringify(header), // Keep JSON for backward compatibility
         header.ersteller || null,
         header.standort || null,
@@ -5219,6 +5297,17 @@ async function appendHistoryEntry(entry) {
     return { success: true, id: historyId };
   } catch (error) {
     db.exec("ROLLBACK");
+    // UNIQUE-Index (gleiche client_uuid, z. B. durch parallelen Schreiber) ->
+    // sauber als Duplikat behandeln statt den Import abzubrechen.
+    if (clientUuid && /UNIQUE|constraint/i.test(String(error && error.message))) {
+      try {
+        const existingId = db.selectValue(
+          "SELECT id FROM history WHERE client_uuid = ? LIMIT 1",
+          [clientUuid]
+        );
+        if (existingId != null) return { id: existingId, duplicate: true };
+      } catch (e) { /* ignore */ }
+    }
     throw error;
   }
 }
