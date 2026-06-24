@@ -36,7 +36,7 @@
 ## 🏗️ Architektur-Prinzipien (immer einhalten)
 
 - **Eine gemeinsame SQLite-DB für ALLE Apps.** Worker `src/scripts/core/storage/sqliteWorker.js`
-  ist die *Source of Truth*. Schema-Änderungen über **Migrationen** (`PRAGMA user_version`, aktuell bis v21).
+  ist die *Source of Truth*. Schema-Änderungen über **Migrationen** (`PRAGMA user_version`, aktuell bis **v24**).
   Egal welche App geöffnet wird – dieselbe DB. Ziel: Cross-App-Auswertungen.
 - **Modular & stabil:** jede App = eigenes Feature-Modul unter `src/scripts/features/<name>/`,
   als View in EINER SPA. Worker-CRUD + Bridge (`storage/sqlite.ts`) + Migration.
@@ -60,31 +60,48 @@ erscheinen oben im **Header** als Reiter. Definition: `src/scripts/components/sh
 > **Einstellungen sind PSM-spezifisch** (Mittel/EPPO/BBCH/GPS) und liegen daher im PSM-Header,
 > nicht in der Sidebar. **Import liegt jetzt im zentralen Bereich „Daten"** (nicht mehr unter PSM).
 > Mobil ersetzt eine **untere Tab-Leiste** die Sidebar (nur **PSM** + **Fotos**).
+>
+> **„Neu erfassen" ist ein Schritt-für-Schritt-Assistent** (`setupCalcWizard` in `features/calculation/`):
+> 3 Schritte (Grunddaten · Mittel & Codes · Anwendung & QS) mit Zurück/Weiter statt einer langen Liste –
+> Mobil **und** Desktop teilen dasselbe `initCalculation`-Formular. Reine Präsentationsschicht über den
+> bestehenden Feldern; **sichere Degradation** (bei Fehler erscheint das vollständige Formular mit Speichern).
 
 ## 🌱 Kulturführung (`features/kultur/`)
 
 Zweiter Reiter im Acker-Bereich – macht aus dem reinen Flächen-Planer eine **Kultur-Management-App**
-(Desktop-only; im Mobil-Client `/m/` bewusst nicht enthalten). Pro **Fläche** (Freiland **oder**
-Gewächshaus) auf einen Blick: *aktuelle Kultur (JETZT) · nächste geplante (NÄCHSTE) · Maßnahmen ·
-Wetter* – alles **Kalenderwochen-basiert**.
+(Desktop-only; im Mobil-Client `/m/` bewusst nicht enthalten). **Überblick zuerst:** Standard-Ansicht
+ist der **Anbauplan** (alle Flächen auf einen Blick); Klick/Rechtsklick auf eine Fläche → planen bzw.
+Detail. Pro **Fläche** (Freiland **oder** Gewächshaus): *aktuelle Kultur · nächste geplante · Aufgaben ·
+Wetter*.
 
 - **Management-Einheit = `(flaeche_typ, flaeche_id)`** – polymorphe, backend-taugliche Referenz:
   `'acker'` → `ackerflaechen.id` (gezeichnetes Polygon), `'haus'` → `gps_points.id` mit
   `kind='gewaechshaus'` (Häuser/Solarhalle aus dem Seed). Koordinate je Einheit = GPS-Punkt bzw.
   Polygon-Schwerpunkt (Eckpunkt-Mittel, **ohne** turf – leichteres Lazy-Load).
-- **Tabellen** (Migration `user_version` **22**, Worker = Source of Truth):
-  - `anbau_kultur` – Kultur-Belegung/Zeitachse (status `geplant`/`aktiv`/`abgeschlossen`,
-    `pflanz_datum`, `ernte_datum`, Farbe, Notiz). Tabellenname bewusst ≠ Spalte `kultur_mittel.anbau`.
+- **Tabellen** (Worker = Source of Truth):
+  - `anbau_kultur` – Kultur-Belegung/Zeitachse (Migration **v22**; status `geplant`/`aktiv`/
+    `abgeschlossen`, `pflanz_datum`, Farbe, Notiz). **Ernte ist ein ZEITRAUM** `ernte_von`/`ernte_bis`
+    (Migration **v23**) – Fruchtgemüse (Tomate/Gurke) wird laufend geerntet; Belegung bis Ernte-Ende.
+    Tabellenname bewusst ≠ Spalte `kultur_mittel.anbau`.
   - `massnahme` – Maßnahmen (`art`: mechanisch/chemisch_psm/duengung/nuetzlinge/bewaesserung/
     monitoring/sonstiges; `status` geplant/erledigt; Datum, Menge/Einheit, Mittel, Notiz). Spalte
     `history_id` **verlinkt** bestehende Pflanzenschutz-Einträge (`history`), statt sie zu duplizieren.
+- **Anbauplan-Board** (`board.ts`, robuste Monatsachse + %-Positionierung, NICHT ein CSS-Grid mit
+  explizitem grid-row/col – das war zuvor kollabiert): Kultur-Belegung als Balken (Pflanzung→Ernte-Ende),
+  **schraffierter Ernte-Zeitraum**, Maßnahmen-Marker **erledigt = gefüllt / geplant = Ring/gestrichelt**,
+  heute-Linie, gruppiert. Rechtsklick auf eine Zeile = schnell planen.
+- **Pro Fläche**: JETZT/NÄCHSTE-Kacheln + **Saison-&-Pflege-Leiste** (`renderSeason`) – je Maßnahmen-Typ
+  geplant vs. erledigt auf einer Zeitachse. Aufgaben-Liste mit Abhaken. **Eingabe bewusst minimal:**
+  Kultur = nur Name (Ernte von/bis optional); Aufgabe = nur Art-Kachel antippen; alles Weitere hinter „Mehr".
+- **Kontextmenü** (Rechtsklick auf Board-Zeile/Liste): Kultur setzen · Nächste planen · Aufgabe planen ·
+  Fläche öffnen · Auf Karte.
 - **Pflanzenschutz-Auto-Import** (`importPsmAsMassnahmen`, im Worker): vorhandene `history`-Einträge
   werden als erledigte `chemisch_psm`-Maßnahmen übernommen – idempotent über `history_id`,
   konservatives Matching (Gewächshaus via `gps_point_id`, Freiland via eindeutige `standort_id`).
 - **Wetter** (`features/kultur/weather.ts`): **Open-Meteo**, client-side, kein API-Key. Forecast-API
   (`past_days=92`, `forecast_days=16`), auf ISO-KW aggregiert, in `localStorage` 1×/Tag gecacht,
   Trennung an der aktuellen KW (Ist/Archiv ↔ Vorhersage). Attribution: *Open-Meteo (CC BY 4.0)*.
-- **Anbauplan-Board** – hof-weite Gantt-Übersicht (alle Flächen × KW), Kultur-Balken + Maßnahmen-Marker.
+- KW-Helfer in `core/utils.ts` (`getIsoWeek`/`weekKey`/`weekStart`).
 
 ### 🔌 Künftiges Backend (für neue Agenten)
 
@@ -113,14 +130,23 @@ ersetzt, ist das ein Ein-Schicht-Wechsel in `storage/sqlite.ts` – die Feature-
 
 ## 🔄 Mobil → Desktop zusammenführen (Merge)
 
-- Jede Erfassung bekommt eine **stabile `clientUuid`** → **Duplikatschutz per UUID** beim Import
-  (dieselbe Datei doppelt = 0 neu). Logik: `features/importMerge/`.
+- Jede Erfassung bekommt eine **stabile `clientUuid`** → **Duplikatschutz per UUID**. **Wichtig
+  (Audit-Fix, Migration v24):** die `clientUuid` wird **EINMAL beim Berechnen** vergeben (nicht pro
+  Speichern neu) und durch **Export *und* Verlauf-Listing** getragen; sie ist als persistente Spalte
+  `history.client_uuid` (+ `fotos.client_uuid`) mit **partiellem UNIQUE-Index** (`WHERE client_uuid IS
+  NOT NULL`) DB-erzwungen. `appendHistoryEntry`/`appendFoto` deduplizieren auf der Spalte (Vorprüfung +
+  UNIQUE-Catch → `{duplicate:true}`); `importSnapshot` nutzt `INSERT OR IGNORE` + `changes()`-Guard.
+  Dieselbe Datei/derselbe Eintrag doppelt = **0 neu**; verschiedene Einträge werden NICHT mehr fälschlich
+  zusammengeworfen. **Migration v24 dedupliziert vorhandene Zeilen VOR dem UNIQUE-Index** (sonst bricht
+  `CREATE UNIQUE INDEX` → DB-Open). Logik: `features/importMerge/`. (Details: Memory `psm-import-dedup`.)
 - **Import-Historie** (Tabelle `import_log`): *wann / von welchem Gerät / wie viele neu·übersprungen /
-  Zeitraum* – sichtbar im Bereich **Daten → Import**.
+  Zeitraum* – sichtbar im Bereich **Daten → Import**. Eine Zeile pro Import-Lauf.
 - Import akzeptiert **ZIP** (Erfassungen + Fotos als echte `.jpg`), **Snapshot (`{history:[…]}`)** und `{entries:[…]}`.
   Mobil-Teilen erzeugt eine **ZIP** (`pflanzenschutz.json` + `fotos/<uuid>.jpg`), kein base64-Aufblähen.
+  Hinweis: `exportSnapshot` liefert History-Einträge **flach** (Header-Felder auf Top-Level inkl. `clientUuid`, nicht unter `.header`).
 - Mobiler **Teilen-Status**: „X bereit zum Teilen" / „Nichts zu teilen" (Teilen nur aktiv, wenn etwas offen ist).
-  **Nach erfolgreichem Senden werden die Fotos vom Handy entfernt** (Mobil = Wegwerf-Client; Erfassungen bleiben).
+  **Fotos werden nach dem Teilen NICHT mehr automatisch gelöscht** (Datenverlust-Schutz: `nav.share`
+  „gelingt" schon bei Übergabe an Mail/Files, nicht am PC) – Löschen nur nach ausdrücklicher Bestätigung.
 
 ## 📷 Fotos (`features/fotos/`)
 
@@ -207,8 +233,9 @@ src/
       indexClient.ts       # Desktop: mountet Features, Section-Sichtbarkeit
       mobileClient.ts      # Mobile: Tab-Leiste (PSM/Fotos) + DB + Teilen-Status
     features/
-      dashboard/ calculation/ documentation/ lager/ acker/
+      dashboard/ calculation/ documentation/ lager/ acker/ kultur/
       fotos/ settings/ codesManager/ importMerge/ gps/ share/ ...
+      kultur/                # Kulturführung: index(Hub) board weather units model
 public/data/
   pestalozzi-seed.json     # Stammdaten-Seed (Standorte + Kultur->Mittel)
 ```
