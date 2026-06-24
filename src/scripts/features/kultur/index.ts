@@ -26,6 +26,7 @@ import { loadUnits, unitKey } from "./units";
 import { getWeather, WEATHER_ATTRIBUTION } from "./weather";
 import {
   ART_META,
+  ART_ORDER,
   artMeta,
   STATUS_META,
   CROP_PALETTE,
@@ -34,6 +35,9 @@ import {
   todayIso,
   dateNum,
   unitCrops,
+  MONTHS_SHORT,
+  monthsBetween,
+  posInMonths,
 } from "./model";
 import { renderBoard } from "./board";
 
@@ -64,7 +68,7 @@ export function initKultur(container: Element | null, services: Services): void 
   let mass: any[] = [];
   let kulturen: any[] = [];
   let selKey: string | null = null;
-  let mode: "flaechen" | "plan" = "flaechen";
+  let mode: "flaechen" | "plan" = "plan"; // Überblick (Anbauplan) zuerst
   let loaded = false;
   let psmImportedThisSession = false;
   const weatherByKey: Record<string, any> = {};
@@ -128,7 +132,11 @@ export function initKultur(container: Element | null, services: Services): void 
     if (mode === "plan") {
       flaechenViewEl()!.style.display = "none";
       boardEl()!.style.display = "block";
-      renderBoard(boardEl()!, { units, anbau, mass, onSelect: (key: string) => { selKey = key; setMode("flaechen"); void ensureWeather(); } });
+      renderBoard(boardEl()!, {
+        units, anbau, mass,
+        onSelect: (key: string) => { selKey = key; setMode("flaechen"); void ensureWeather(); },
+        onContext: (key: string, x: number, y: number) => openUnitMenu(key, x, y),
+      });
     } else {
       boardEl()!.style.display = "none";
       flaechenViewEl()!.style.display = "grid";
@@ -172,7 +180,10 @@ export function initKultur(container: Element | null, services: Services): void 
     const fields = units.filter((u) => u.typ === "acker");
     const grp = (t: string, arr: any[]) => (arr.length ? `<div class="km-grp">${escapeHtml(t)}</div>` + arr.map(rowHtml).join("") : "");
     host.innerHTML = grp("Gewächshäuser", houses) + grp("Freiland", fields);
-    host.querySelectorAll("[data-ukey]").forEach((r: any) => r.addEventListener("click", () => { selKey = r.dataset.ukey; renderList(); renderDetail(); void ensureWeather(); }));
+    host.querySelectorAll("[data-ukey]").forEach((r: any) => {
+      r.addEventListener("click", () => { selKey = r.dataset.ukey; renderList(); renderDetail(); void ensureWeather(); });
+      r.addEventListener("contextmenu", (e: any) => { e.preventDefault(); openUnitMenu(r.dataset.ukey, e.clientX, e.clientY); });
+    });
   }
   function rowHtml(u: any, idx: number) {
     const key = unitKey(u);
@@ -201,7 +212,7 @@ export function initKultur(container: Element | null, services: Services): void 
     let hero;
     if (current) {
       const since = current.pflanzDatum ? `seit ${fmtDay(current.pflanzDatum)} · ${weekLabel(weekNumber(current.pflanzDatum))}` : "";
-      const harvest = current.ernteDatum ? ` · Ernte ~${weekLabel(weekNumber(current.ernteDatum))}` : "";
+      const harvest = harvestText(current);
       hero = `<div class="km-hero active" style="--cc:${escapeHtml(cropColor(current))}">
         <div class="km-hero-ic"><i class="bi bi-flower2"></i></div>
         <div class="km-hero-body"><div class="km-hero-crop">${escapeHtml(current.kultur || "Kultur")}</div><div class="km-hero-sub">${escapeHtml(since + harvest)}</div></div>
@@ -223,6 +234,7 @@ export function initKultur(container: Element | null, services: Services): void 
         <button class="km-headbtn" data-act="map"><i class="bi bi-map"></i> Auf Karte</button></div>
       ${hero}
       ${nextLine}
+      ${renderSeason(crops, measures)}
       <div class="km-tasks-head"><span>Aufgaben</span><button class="km-addtask" data-act="add-massnahme"><i class="bi bi-plus-lg"></i> Aufgabe</button></div>
       ${renderTasks(measures)}
       <div class="km-foot">
@@ -306,6 +318,70 @@ export function initKultur(container: Element | null, services: Services): void 
     const p = w.precipSum != null ? Math.round(w.precipSum) + " mm" : "–";
     return `<i class="bi bi-cloud-sun"></i> Diese Woche: ${t} · ${p} Regen`;
   }
+  function harvestText(c: any): string {
+    const v = c.ernteVon ? weekLabel(weekNumber(c.ernteVon)) : null;
+    const bIso = c.ernteBis || c.ernteDatum;
+    const b = bIso ? weekLabel(weekNumber(bIso)) : null;
+    if (v && b) return ` · Ernte ${v}–${b}`;
+    if (b) return ` · Ernte ~${b}`;
+    if (v) return ` · Ernte ab ${v}`;
+    return "";
+  }
+
+  // Saison-Leiste: Kultur-Belegung + Ernte-Zeitraum + je Maßnahmen-Typ
+  // geplant(Ring)/erledigt(gefüllt) auf einer Monatsachse.
+  function renderSeason(crops: any[], measures: any[]): string {
+    if (!crops.length && !measures.length) return "";
+    const today = new Date();
+    let minD = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    let maxD = new Date(today.getFullYear(), today.getMonth() + 4, 1);
+    const stretch = (iso: string) => {
+      if (!iso) return;
+      const d = new Date(String(iso).slice(0, 10) + "T00:00:00");
+      if (isNaN(d.getTime())) return;
+      if (d < minD) minD = new Date(d.getFullYear(), d.getMonth(), 1);
+      if (d > maxD) maxD = new Date(d.getFullYear(), d.getMonth(), 1);
+    };
+    crops.forEach((c) => { stretch(c.pflanzDatum); stretch(c.ernteBis || c.ernteDatum); stretch(c.ernteVon); });
+    measures.forEach((m) => stretch(m.planDatum || m.erledigtDatum));
+    const months = monthsBetween(minD, maxD);
+    const N = months.length;
+    const gridStyle = `background-size:${(100 / N).toFixed(4)}% 100%`;
+    const pct = (p: number) => (p == null ? null : (p * 100).toFixed(2) + "%");
+    const todayPos = posInMonths(months, today.toISOString());
+    const todayLine = todayPos != null ? `<div class="ks-today" style="left:${pct(todayPos)}"></div>` : "";
+    const head = months.map((mo: any) => `<div class="ks-mo${mo.y === today.getFullYear() && mo.m === today.getMonth() ? " cur" : ""}">${MONTHS_SHORT[mo.m]}</div>`).join("");
+    let kultur = "";
+    crops.forEach((c, ci) => {
+      const p0 = posInMonths(months, c.pflanzDatum);
+      let p1 = posInMonths(months, c.ernteBis || c.ernteDatum || c.pflanzDatum);
+      if (p0 == null) return;
+      if (p1 == null || p1 <= p0) p1 = Math.min(1, p0 + 0.5 / N);
+      const col = cropColor(c, ci);
+      kultur += `<div class="ks-bar${c.status === "geplant" ? " planned" : ""}" style="left:${pct(p0)};width:${((p1 - p0) * 100).toFixed(2)}%;--cc:${escapeHtml(col)}"><span>${escapeHtml(c.kultur || "")}</span></div>`;
+      const ev = posInMonths(months, c.ernteVon);
+      const eb = posInMonths(months, c.ernteBis);
+      if (ev != null && eb != null && eb > ev) kultur += `<div class="ks-harvest" style="left:${pct(ev)};width:${((eb - ev) * 100).toFixed(2)}%"></div>`;
+    });
+    const byArt: Record<string, any[]> = {};
+    measures.forEach((m) => { (byArt[m.art] = byArt[m.art] || []).push(m); });
+    const artRows = ART_ORDER.filter((a) => byArt[a]).map((a) => {
+      const meta = ART_META[a];
+      const marks = byArt[a].map((m: any) => {
+        const d = m.status === "erledigt" ? (m.erledigtDatum || m.planDatum) : (m.planDatum || m.erledigtDatum);
+        const p = posInMonths(months, d);
+        if (p == null) return "";
+        return `<span class="ks-mk${m.status === "erledigt" ? " done" : ""}" title="${escapeHtml(meta.label + (m.notes ? ": " + m.notes : ""))}" style="left:${pct(p)};--mc:${meta.color}"></span>`;
+      }).join("");
+      return `<div class="ks-row"><div class="ks-rl">${escapeHtml(meta.label)}</div><div class="ks-track" style="${gridStyle}">${marks}${todayLine}</div></div>`;
+    }).join("");
+    return `<div class="ks-wrap">
+      <div class="ks-head"><div class="ks-rl"></div><div class="ks-axis">${head}</div></div>
+      <div class="ks-row"><div class="ks-rl">Kultur</div><div class="ks-track" style="${gridStyle}">${kultur}${todayLine}</div></div>
+      ${artRows}
+      <div class="ks-legend"><span><span class="ks-d done"></span>erledigt</span><span><span class="ks-d"></span>geplant</span><span style="margin-left:auto"><span class="ks-hbar"></span>Ernte-Zeitraum</span></div>
+    </div>`;
+  }
 
   // ---------------- Aktionen ----------------
   function openOnMap(u: any) {
@@ -329,6 +405,43 @@ export function initKultur(container: Element | null, services: Services): void 
   async function removeMassnahme(id: string) {
     try { await deleteMassnahme({ id }); await reloadData(); renderAll(); persist(); }
     catch { toast.error("Löschen fehlgeschlagen."); }
+  }
+
+  // ---------------- Kontextmenü (schnell planen) ----------------
+  let ctxEl: HTMLElement | null = null;
+  const closeCtx = () => { if (ctxEl) { ctxEl.remove(); ctxEl = null; document.removeEventListener("pointerdown", onCtxOut, true); } };
+  const onCtxOut = (e: any) => { if (ctxEl && !ctxEl.contains(e.target)) closeCtx(); };
+  function openCtx(x: number, y: number, items: any[], title?: string) {
+    closeCtx();
+    ctxEl = document.createElement("div");
+    ctxEl.className = "km-ctx";
+    if (title) { const t = document.createElement("div"); t.className = "km-ctx-t"; t.textContent = title; ctxEl.appendChild(t); }
+    items.forEach((it) => {
+      if (it.sep) { const s = document.createElement("div"); s.className = "km-ctx-sep"; ctxEl!.appendChild(s); return; }
+      const b = document.createElement("button");
+      b.className = "km-ctx-i";
+      b.innerHTML = `<i class="bi ${it.icon}"></i><span>${escapeHtml(it.label)}</span>`;
+      b.addEventListener("click", () => { closeCtx(); it.action?.(); });
+      ctxEl!.appendChild(b);
+    });
+    document.body.appendChild(ctxEl);
+    const r = ctxEl.getBoundingClientRect();
+    ctxEl.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + "px";
+    ctxEl.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + "px";
+    setTimeout(() => document.addEventListener("pointerdown", onCtxOut, true), 0);
+  }
+  function openUnitMenu(key: string, x: number, y: number) {
+    const u = findUnit(key); if (!u) return;
+    const crops = forUnitArr(anbau, u);
+    const { current } = unitCrops(crops);
+    openCtx(x, y, [
+      { icon: "bi-flower2", label: current ? "Kultur bearbeiten" : "Kultur setzen", action: () => editCrop(u, current, "current", crops.length) },
+      { icon: "bi-plus-lg", label: "Nächste Kultur planen", action: () => editCrop(u, null, "next", crops.length) },
+      { icon: "bi-list-check", label: "Aufgabe planen", action: () => editMassnahme(u, null, current) },
+      { sep: true },
+      { icon: "bi-arrow-right-circle", label: "Fläche öffnen", action: () => { selKey = key; setMode("flaechen"); void ensureWeather(); } },
+      { icon: "bi-map", label: "Auf Karte", action: () => openOnMap(u) },
+    ], u.name);
   }
 
   // ---------------- Modal-Gerüst ----------------
@@ -368,13 +481,15 @@ export function initKultur(container: Element | null, services: Services): void 
     const swatches = CROP_PALETTE.map((col) => `<button type="button" class="km-sw${(c.color || "") === col ? " on" : ""}" data-col="${col}" style="background:${col}"></button>`).join("");
     const body = `
       <label class="km-fld big">Was wächst hier?<input list="km-kultur-dl" data-f="kultur" value="${escapeHtml(c.kultur || "")}" placeholder="z. B. Gurke" autocomplete="off" /></label>${kulturDatalist()}
-      <label class="km-fld">${isNext ? "Geplante Pflanzung" : "Pflanzung / seit"}<input type="date" data-f="pflanz" value="${defDate}" /></label>
-      <button type="button" class="km-more" data-more><i class="bi bi-sliders"></i> Mehr (Ernte, Status, Farbe, Notiz)</button>
+      <div class="km-frow3">
+        <label class="km-fld">${isNext ? "Geplante Pflanzung" : "Pflanzung"}<input type="date" data-f="pflanz" value="${defDate}" /></label>
+        <label class="km-fld">Ernte von<input type="date" data-f="ernteVon" value="${(c.ernteVon || "").slice(0, 10)}" /></label>
+        <label class="km-fld">Ernte bis<input type="date" data-f="ernteBis" value="${(c.ernteBis || c.ernteDatum || "").slice(0, 10)}" /></label>
+      </div>
+      <div class="km-hint2"><i class="bi bi-info-circle"></i> Bei Frucht­gemüse (Tomate, Gurke …) wird über den ganzen Zeitraum laufend geerntet.</div>
+      <button type="button" class="km-more" data-more><i class="bi bi-sliders"></i> Mehr (Status, Farbe, Notiz)</button>
       <div class="km-more-box" data-more-box hidden>
-        <div class="km-frow2">
-          <label class="km-fld">Status<select data-f="status">${["aktiv", "geplant", "abgeschlossen"].map((s) => `<option value="${s}"${(c.status || (isNext ? "geplant" : "aktiv")) === s ? " selected" : ""}>${STATUS_META[s].label}</option>`).join("")}</select></label>
-          <label class="km-fld">Erntedatum<input type="date" data-f="ernte" value="${(c.ernteDatum || "").slice(0, 10)}" /></label>
-        </div>
+        <label class="km-fld">Status<select data-f="status">${["aktiv", "geplant", "abgeschlossen"].map((s) => `<option value="${s}"${(c.status || (isNext ? "geplant" : "aktiv")) === s ? " selected" : ""}>${STATUS_META[s].label}</option>`).join("")}</select></label>
         <div class="km-fld">Farbe<div class="km-sws">${swatches}</div></div>
         <label class="km-fld">Notiz<textarea data-f="notes" rows="2" placeholder="optional">${escapeHtml(c.notes || "")}</textarea></label>
       </div>
@@ -384,6 +499,8 @@ export function initKultur(container: Element | null, services: Services): void 
       const kultur = get("kultur");
       if (!kultur) { toast.warning("Bitte eine Kultur angeben."); return false; }
       const pflanz = get("pflanz") || null;
+      const ernteVon = get("ernteVon") || null;
+      const ernteBis = get("ernteBis") || null;
       const moreOpen = !(root.querySelector("[data-more-box]") as HTMLElement).hidden;
       let status = moreOpen ? get("status") : "";
       if (!status) status = isNext ? "geplant" : (pflanz && dateNum(pflanz) > Number(todayIso().replace(/-/g, "")) ? "geplant" : "aktiv");
@@ -392,7 +509,7 @@ export function initKultur(container: Element | null, services: Services): void 
       const eppo = kulturen.find((k) => k.kultur === kultur)?.eppoCode || null;
       void (async () => {
         try {
-          await upsertAnbau({ id: crop?.id, flaecheTyp: u.typ, flaecheId: u.id, kultur, eppoCode: eppo, status, pflanzDatum: pflanz, ernteDatum: moreOpen ? (get("ernte") || null) : (c.ernteDatum || null), color, notes: moreOpen ? (get("notes") || null) : (c.notes || null) });
+          await upsertAnbau({ id: crop?.id, flaecheTyp: u.typ, flaecheId: u.id, kultur, eppoCode: eppo, status, pflanzDatum: pflanz, ernteVon, ernteBis, ernteDatum: null, color, notes: moreOpen ? (get("notes") || null) : (c.notes || null) });
           await reloadData(); renderAll(); persist();
         } catch { toast.error("Speichern fehlgeschlagen."); }
       })();
@@ -472,7 +589,7 @@ export function initKultur(container: Element | null, services: Services): void 
 
   // ---------------- Lifecycle ----------------
   container.querySelectorAll(".km-modebtn").forEach((b: any) => b.addEventListener("click", () => setMode(b.dataset.mode)));
-  document.addEventListener("keydown", (e: any) => { if (e.key === "Escape" && modalEl) closeModal(); });
+  document.addEventListener("keydown", (e: any) => { if (e.key === "Escape") { if (modalEl) closeModal(); closeCtx(); } });
   window.addEventListener("psm:openKultur", (e: any) => {
     const d = e?.detail; if (!d?.typ || !d?.id) return;
     selKey = d.typ + ":" + d.id; setMode("flaechen");
@@ -601,13 +718,43 @@ function renderShell(): string {
     .km-seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border-1);border-radius:10px;padding:3px;align-self:flex-start}
     .km-segb{border:0;background:transparent;color:var(--text-muted);font-size:13px;font-weight:600;padding:8px 16px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
     .km-segb.on{background:var(--surface-1);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.1)}
-    @media(max-width:820px){.kultur-body{grid-template-columns:1fr}.kultur-list{max-height:200px}.km-frow2{grid-template-columns:1fr}.km-tasktiles{grid-template-columns:repeat(3,1fr)}}
+    .km-frow3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    .km-hint2{font-size:11.5px;color:var(--text-dim);display:flex;align-items:center;gap:6px;margin-top:-2px}
+    .km-hint2 i{color:#0891b2}
+    /* Kontextmenü */
+    .km-ctx{position:fixed;z-index:4000;min-width:210px;background:var(--surface-1);border:1px solid var(--border-1);border-radius:11px;box-shadow:0 14px 38px rgba(15,23,42,.22);padding:5px;font-size:14px;color:var(--text)}
+    .km-ctx-t{font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .km-ctx-sep{height:1px;background:var(--border-1);margin:4px 4px}
+    .km-ctx-i{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:13.5px}
+    .km-ctx-i:hover{background:var(--surface-3)}
+    .km-ctx-i i{width:18px;text-align:center;color:var(--text-muted)}
+    /* Saison-Leiste (Detail) */
+    .ks-wrap{border:1px solid var(--border-1);border-radius:12px;padding:10px 12px;margin:6px 0 16px}
+    .ks-head,.ks-row{display:flex;align-items:center;min-height:24px}
+    .ks-rl{width:88px;min-width:88px;font-size:11.5px;color:var(--text-muted);padding-right:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ks-axis{display:flex;flex:1}
+    .ks-mo{flex:1;text-align:center;font-size:10.5px;color:var(--text-dim);border-left:1px solid var(--border-1)}
+    .ks-mo.cur{color:#16a34a;font-weight:700}
+    .ks-track{position:relative;flex:1;height:24px;background-image:linear-gradient(to right,var(--border-1) 1px,transparent 1px);background-repeat:repeat-x}
+    .ks-bar{position:absolute;top:4px;height:16px;border-radius:4px;background:var(--cc);color:#fff;display:flex;align-items:center;padding:0 6px;overflow:hidden;min-width:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+    .ks-bar span{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ks-bar.planned{background:transparent;border:1.5px dashed var(--cc);color:var(--cc)}
+    .ks-harvest{position:absolute;top:6px;height:12px;border-radius:3px;background:repeating-linear-gradient(45deg,rgba(255,255,255,.62),rgba(255,255,255,.62) 3px,transparent 3px,transparent 6px);box-shadow:inset 0 0 0 1.5px #fff;pointer-events:none}
+    .ks-mk{position:absolute;top:7px;width:11px;height:11px;border-radius:50%;background:var(--mc);transform:translateX(-50%);border:1.5px solid var(--surface-1)}
+    .ks-mk:not(.done){background:var(--surface-1);box-shadow:inset 0 0 0 2px var(--mc)}
+    .ks-today{position:absolute;top:-2px;bottom:-2px;width:0;border-left:2px dashed #16a34a;transform:translateX(-1px);pointer-events:none}
+    .ks-legend{display:flex;gap:14px;font-size:11px;color:var(--text-dim);margin-top:8px;padding-left:88px;align-items:center}
+    .ks-legend>span{display:inline-flex;align-items:center;gap:5px}
+    .ks-d{width:11px;height:11px;border-radius:50%;background:var(--surface-1);box-shadow:inset 0 0 0 2px var(--text-dim)}
+    .ks-d.done{background:var(--text-dim);box-shadow:none}
+    .ks-hbar{width:18px;height:9px;border-radius:3px;background:repeating-linear-gradient(45deg,#bbb,#bbb 2px,transparent 2px,transparent 4px);display:inline-block}
+    @media(max-width:820px){.kultur-body{grid-template-columns:1fr}.kultur-list{max-height:200px}.km-frow2{grid-template-columns:1fr}.km-frow3{grid-template-columns:1fr}.km-tasktiles{grid-template-columns:repeat(3,1fr)}}
   </style>
   <section class="calc-section kultur-wrap">
     <div class="kultur-top">
       <div class="kultur-modes">
-        <button class="km-modebtn active" data-mode="flaechen"><i class="bi bi-grid-1x2"></i>Flächen</button>
-        <button class="km-modebtn" data-mode="plan"><i class="bi bi-calendar3"></i>Anbauplan</button>
+        <button class="km-modebtn active" data-mode="plan"><i class="bi bi-calendar3"></i>Überblick</button>
+        <button class="km-modebtn" data-mode="flaechen"><i class="bi bi-grid-1x2"></i>Fläche</button>
       </div>
       <div class="kultur-kpis" data-role="kpis"></div>
     </div>

@@ -110,6 +110,43 @@ export function weekWindow(fromDate, toDate, maxWeeks = 70) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Monats-Zeitachse (für Board + Saison-Leiste). Gleich breite Monatsspalten;
+// Datumsangaben werden anteilig im Monat platziert -> robustes, sauberes Raster.
+// ---------------------------------------------------------------------------
+export const MONTHS_SHORT = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+export function monthsBetween(from, to) {
+  const out = [];
+  let y = from.getFullYear();
+  let m = from.getMonth();
+  const ey = to.getFullYear();
+  const em = to.getMonth();
+  let g = 0;
+  while ((y < ey || (y === ey && m <= em)) && g < 60) {
+    out.push({ y, m });
+    m++; if (m > 11) { m = 0; y++; }
+    g++;
+  }
+  return out;
+}
+
+// Position 0..1 eines ISO-Datums in der Monatsachse (geklemmt; null wenn leer).
+export function posInMonths(months, iso) {
+  if (!iso || !months.length) return null;
+  const d = new Date(String(iso).slice(0, 10) + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  const N = months.length;
+  const dn = d.getFullYear() * 12 + d.getMonth();
+  const fn = months[0].y * 12 + months[0].m;
+  const ln = months[N - 1].y * 12 + months[N - 1].m;
+  if (dn < fn) return 0;
+  if (dn > ln) return 1;
+  const idx = dn - fn;
+  const daysInM = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  return (idx + (d.getDate() - 1) / daysInM) / N;
+}
+
 // Index der Woche im Fenster, die ein ISO-Datum enthält (-1 wenn außerhalb).
 export function weekIndexOf(window, iso) {
   if (!iso) return -1;

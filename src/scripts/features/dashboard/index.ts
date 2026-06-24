@@ -34,23 +34,24 @@ function statCard(icon: string, label: string, value: string, section?: string):
   const click = section ? ` data-goto="${section}" style="cursor:pointer;"` : "";
   return `
     <div class="dash-card"${click}>
-      <i class="bi ${icon} dash-card-icon"></i>
-      <div class="dash-card-value">${value}</div>
-      <div class="dash-card-label">${escapeHtml(label)}</div>
+      <div class="dash-card-ic"><i class="bi ${icon}"></i></div>
+      <div class="dash-card-body"><div class="dash-card-value">${value}</div><div class="dash-card-label">${escapeHtml(label)}</div></div>
     </div>`;
 }
 
 function renderShell(): string {
   return `
   <style>
-    .dash-wrap{display:flex;flex-direction:column;gap:18px}
-    .dash-greet h2{margin:0;font-weight:650}
-    .dash-greet p{margin:2px 0 0;color:var(--color-text-muted,#94a3b8);font-size:.95rem}
-    .dash-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-    .dash-card{background:var(--color-surface-1,rgba(255,255,255,.04));border:1px solid var(--border-1,rgba(255,255,255,.1));border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:2px;transition:border-color .15s}
-    .dash-card[data-goto]:hover{border-color:var(--color-primary,#22c55e)}
-    .dash-card-icon{font-size:1.2rem;color:var(--color-primary,#22c55e)}
-    .dash-card-value{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+    .dash-wrap{display:flex;flex-direction:column;gap:16px}
+    .dash-greet h2{margin:0;font-weight:650;font-size:1.5rem}
+    .dash-greet p{margin:3px 0 0;color:var(--color-text-muted,#94a3b8);font-size:.95rem}
+    .dash-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:12px}
+    .dash-card{background:var(--color-surface-1,#fff);border:1px solid var(--border-1,#d3dce4);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:13px;transition:border-color .15s,box-shadow .15s}
+    .dash-card[data-goto]{cursor:pointer}
+    .dash-card[data-goto]:hover{border-color:var(--color-primary,#16a34a);box-shadow:0 2px 10px rgba(16,163,74,.08)}
+    .dash-card-ic{width:40px;height:40px;border-radius:11px;background:rgba(22,163,74,.1);color:#16a34a;display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex:none}
+    .dash-card-body{min-width:0}
+    .dash-card-value{font-size:1.55rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05}
     .dash-card-label{font-size:.82rem;color:var(--color-text-muted,#94a3b8)}
     .dash-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     @media(max-width:820px){.dash-cols{grid-template-columns:1fr}}
@@ -68,14 +69,15 @@ function renderShell(): string {
         <p data-role="dash-sub">Willkommen – hier siehst du auf einen Blick, was los ist.</p>
       </div>
 
-      <div class="dash-cards" data-role="dash-cards"></div>
-
       <div class="dash-actions">
         <button class="btn btn-psm-primary" data-goto="calc"><i class="bi bi-pencil-square me-1"></i>Neu erfassen</button>
+        <button class="btn btn-psm-secondary-outline" data-goto="kultur"><i class="bi bi-clipboard2-pulse me-1"></i>Kulturführung</button>
         <button class="btn btn-psm-secondary-outline" data-goto="lager"><i class="bi bi-box-seam me-1"></i>PSM-Lager</button>
         <button class="btn btn-psm-secondary-outline" data-goto="acker"><i class="bi bi-map me-1"></i>Acker-Planer</button>
         <button class="btn btn-psm-secondary-outline" data-goto="documentation"><i class="bi bi-list-ul me-1"></i>Übersicht</button>
       </div>
+
+      <div class="dash-cards" data-role="dash-cards"></div>
 
       <div class="dash-cols">
         <div class="dash-panel">
@@ -161,8 +163,9 @@ export function initDashboard(container: Element | null, services: Services): vo
         if (days < 0) warns.push(`<div class="dash-row"><span><i class="bi bi-calendar-x me-1" style="color:#ef4444"></i>${escapeHtml(r.name)}</span><span style="color:#ef4444">Zulassung abgelaufen</span></div>`);
         else if (days < 180) warns.push(`<div class="dash-row"><span><i class="bi bi-calendar-event me-1" style="color:#f59e0b"></i>${escapeHtml(r.name)}</span><span style="color:#f59e0b">Zulassung endet in ${days} T</span></div>`);
       });
+      const moreWarn = warns.length > 6 ? `<div class="dash-row" style="color:var(--color-text-muted)"><span>+ ${warns.length - 6} weitere</span></div>` : "";
       warnEl.innerHTML = warns.length
-        ? warns.slice(0, 8).join("")
+        ? warns.slice(0, 6).join("") + moreWarn
         : `<div class="dash-empty">Alles im grünen Bereich. ✓</div>`;
     }
 

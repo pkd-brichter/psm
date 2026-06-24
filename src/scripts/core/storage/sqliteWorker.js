@@ -1187,6 +1187,8 @@ function ensureAnbauTable(targetDb = db) {
       status TEXT NOT NULL DEFAULT 'geplant',
       pflanz_datum TEXT,
       ernte_datum TEXT,
+      ernte_von TEXT,
+      ernte_bis TEXT,
       color TEXT,
       notes TEXT,
       created_at TEXT NOT NULL,
@@ -1237,6 +1239,8 @@ function mapAnbauRow(row) {
     status: row.status ?? "geplant",
     pflanzDatum: row.pflanz_datum ?? null,
     ernteDatum: row.ernte_datum ?? null,
+    ernteVon: row.ernte_von ?? null,
+    ernteBis: row.ernte_bis ?? row.ernte_datum ?? null,
     color: row.color ?? null,
     notes: row.notes ?? null,
     createdAt: row.created_at || null,
@@ -1295,18 +1299,20 @@ async function upsertAnbau(payload = {}) {
     String(payload.status || "geplant"),
     payload.pflanzDatum != null ? String(payload.pflanzDatum) : null,
     payload.ernteDatum != null ? String(payload.ernteDatum) : null,
+    payload.ernteVon != null ? String(payload.ernteVon) : null,
+    payload.ernteBis != null ? String(payload.ernteBis) : null,
     payload.color != null ? String(payload.color) : null,
     payload.notes != null ? String(payload.notes) : null,
   ];
   const exists = db.selectValue("SELECT 1 FROM anbau_kultur WHERE id = ? LIMIT 1", [id]);
   if (exists) {
     const stmt = db.prepare(
-      "UPDATE anbau_kultur SET flaeche_typ=?, flaeche_id=?, kultur=?, eppo_code=?, status=?, pflanz_datum=?, ernte_datum=?, color=?, notes=?, updated_at=? WHERE id=?"
+      "UPDATE anbau_kultur SET flaeche_typ=?, flaeche_id=?, kultur=?, eppo_code=?, status=?, pflanz_datum=?, ernte_datum=?, ernte_von=?, ernte_bis=?, color=?, notes=?, updated_at=? WHERE id=?"
     );
     stmt.bind([...v, now, id]); stmt.step(); stmt.finalize();
   } else {
     const stmt = db.prepare(
-      "INSERT INTO anbau_kultur (flaeche_typ, flaeche_id, kultur, eppo_code, status, pflanz_datum, ernte_datum, color, notes, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+      "INSERT INTO anbau_kultur (flaeche_typ, flaeche_id, kultur, eppo_code, status, pflanz_datum, ernte_datum, ernte_von, ernte_bis, color, notes, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     );
     stmt.bind([...v, now, now, id]); stmt.step(); stmt.finalize();
   }
@@ -3284,6 +3290,33 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 22 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 23: Ernte-Zeitraum (anbau_kultur.ernte_von / ernte_bis)
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  if (postMigrationVersion < 23) {
+    console.log("Migrating database to version 23 (Ernte-Zeitraum)...");
+    db.exec("BEGIN TRANSACTION");
+    try {
+      ensureAnbauTable(db);
+      if (!hasColumn(db, "anbau_kultur", "ernte_von")) {
+        db.exec("ALTER TABLE anbau_kultur ADD COLUMN ernte_von TEXT");
+      }
+      if (!hasColumn(db, "anbau_kultur", "ernte_bis")) {
+        db.exec("ALTER TABLE anbau_kultur ADD COLUMN ernte_bis TEXT");
+      }
+      // Bisheriger Einzel-Erntetag wird zum Ernte-Ende übernommen.
+      db.exec(
+        "UPDATE anbau_kultur SET ernte_bis = ernte_datum WHERE ernte_bis IS NULL AND ernte_datum IS NOT NULL"
+      );
+      db.exec("PRAGMA user_version = 23");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 23 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 23 failed:", error);
       throw error;
     }
   }
