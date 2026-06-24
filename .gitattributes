@@ -53,3 +53,4 @@ public/assets/img/og-image.png filter=lfs diff=lfs merge=lfs -text
 *.yaml text eol=lf
 *.yml text eol=lf
 *.sql text eol=lf
+public/vendor/psm-geo/*.wasm filter=lfs diff=lfs merge=lfs -text
