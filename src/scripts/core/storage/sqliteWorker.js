@@ -8,9 +8,18 @@ let db = null;
 let isInitialized = false;
 let currentMode = "memory";
 
-// SQLite-WASM CDN URL
+// SQLite-WASM wird vom eigenen Origin geladen (public/vendor/sqlite/).
+// Die Dateien stammen aus node_modules/@sqlite.org/sqlite-wasm@3.46.1-build1/sqlite-wasm/jswasm/
+// und wurden einmalig nach public/vendor/sqlite/ kopiert (Ticket: SQLite-WASM selbst hosten).
+// Dadurch entfällt die Laufzeit-Abhängigkeit vom jsdelivr-CDN; die Version ist durch
+// die eingecheckte Datei eingefroren.
+//
+// import.meta.env.BASE_URL wird von Vite beim Build zu "/psm/" aufgelöst.
+// Fallback auf "/psm/vendor/sqlite/" falls die Ersetzung im Worker-Kontext nicht greift.
 const SQLITE_WASM_CDN =
-  "https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.46.1-build1/sqlite-wasm/jswasm/";
+  (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL
+    ? import.meta.env.BASE_URL
+    : "/psm/") + "vendor/sqlite/";
 const GPS_ACTIVE_POINT_META_KEY = "gps_active_point";
 
 function clampPageSize(value, fallback = 50, max = 500) {
@@ -2659,7 +2668,9 @@ async function initDatabase(options = {}) {
   }
 
   try {
-    // Load SQLite WASM module
+    // sqlite3.mjs und alle Hilfsdateien (.wasm, OPFS-Proxy, …) werden aus dem
+    // eigenen Origin geladen (SQLITE_WASM_CDN → /psm/vendor/sqlite/).
+    // locateFile stellt sicher, dass auch interne relative Pfade korrekt aufgelöst werden.
     const sqlite3InitModule = await import(
       SQLITE_WASM_CDN + "sqlite3.mjs"
     ).then((m) => m.default);
