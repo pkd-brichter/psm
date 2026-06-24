@@ -268,6 +268,52 @@ export function initAcker(container: Element | null, services: Services): void {
     return { areaM2, beds, bedMeters, plants };
   }
 
+  // Quer-Ausdehnung (m) der Fläche, wenn die Beete unter `angleDeg` laufen –
+  // also die Strecke, über die hinweg Beete gezählt werden (Bounding-Box-Höhe im
+  // gedrehten System). Genau diese Größe / pitch ergibt die Beet-Anzahl.
+  function crossExtentM(latlngs: any[], angleDeg: number): number {
+    if (!turf) return Infinity;
+    const ring = latlngs.map((a) => [a[1], a[0]]);
+    if (ring.length < 3) return Infinity;
+    const f = ring[0], l = ring[ring.length - 1];
+    if (f[0] !== l[0] || f[1] !== l[1]) ring.push(f.slice());
+    let field;
+    try { field = turf.polygon([ring]); } catch { return Infinity; }
+    const pivot = turf.centroid(field);
+    let rot;
+    try { rot = turf.transformRotate(field, -angleDeg, { pivot }); } catch { return Infinity; }
+    const bb = turf.bbox(rot);
+    return (bb[3] - bb[1]) * 111320;
+  }
+
+  // Bester Beet-Winkel: die Beete laufen entlang der LÄNGSACHSE der Fläche
+  // (= geringste Quer-Ausdehnung = längste, wenigste Beete). So zählt die App
+  // reale Beete statt vieler kurzer „Phantom-Streifen", die entstehen, wenn das
+  // feste Beet-Raster schräg über die Fläche schneidet. Robust gegen von Hand
+  // gezeichnete Unregelmäßigkeiten: testet alle Kantenrichtungen + grobe Sweep,
+  // dann Feinsuche (Rotating-Calipers-Prinzip: das schmalste Rechteck liegt an
+  // einer Kante der Fläche).
+  function optimalBedAngle(latlngs: any[]): number {
+    if (!turf || !latlngs || latlngs.length < 3) return 0;
+    const cand = new Set<number>();
+    for (let i = 0; i < latlngs.length; i++) {
+      const a = latlngs[i], b = latlngs[(i + 1) % latlngs.length];
+      try {
+        const br = turf.bearing(turf.point([a[1], a[0]]), turf.point([b[1], b[0]]));
+        cand.add((((br - 90) % 180) + 180) % 180); // Beete laufen ENTLANG der Kante
+      } catch {}
+    }
+    for (let a = 0; a < 180; a += 3) cand.add(a); // grober Sweep als Fallback
+    let best = 0, bestH = Infinity;
+    cand.forEach((ang) => { const h = crossExtentM(latlngs, ang); if (h < bestH - 1e-6) { bestH = h; best = ang; } });
+    for (let a = best - 2; a <= best + 2; a += 0.25) { // Feinsuche ±2°
+      const an = ((a % 180) + 180) % 180;
+      const h = crossExtentM(latlngs, an);
+      if (h < bestH - 1e-6) { bestH = h; best = an; }
+    }
+    return Math.round(best * 10) / 10; // 0,1°-Präzision
+  }
+
   // ---------- Rendern (Karte) ----------
   // Outline-Stil: im Detail-Modus liefern die Beete die Füllung, der Umriss ist
   // OHNE Füllung – so zeigen die Weg-Lücken zwischen den Beeten den Boden
@@ -531,23 +577,36 @@ export function initAcker(container: Element | null, services: Services): void {
     recompute(fl);
     toast.info(`Beete-Ausrichtung: ${fl.params.angle}°`);
   }
-  // Beete parallel zur längsten Kante ausrichten (ein Klick statt Slider-Fummelei).
-  // Beet-Peilung = 90° + angle → angle = Kanten-Peilung − 90° (empirisch geprüft).
+  // Beete entlang der Längsachse der Fläche ausrichten (ein Klick statt
+  // Slider-Fummelei). Wählt exakt den Winkel mit der geringsten Quer-Ausdehnung
+  // → längste, wenigste Beete = was real auf der Fläche steht. Präzise (0,1°),
+  // damit lange Flächen nicht durch wenige Grad Schräglage zu viele Beete zeigen.
   function alignBedsToField(fl: any) {
     const ll = fl.latlngs || [];
     if (ll.length < 2 || !turf) return;
-    let bestLen = -1, bearing = 0;
-    for (let i = 0; i < ll.length; i++) {
-      const a = ll[i], b = ll[(i + 1) % ll.length];
-      try {
-        const pa = turf.point([a[1], a[0]]), pb = turf.point([b[1], b[0]]);
-        const len = turf.distance(pa, pb);
-        if (len > bestLen) { bestLen = len; bearing = turf.bearing(pa, pb); }
-      } catch {}
-    }
-    fl.params.angle = ((Math.round(bearing - 90) % 180) + 180) % 180;
+    fl.params.angle = optimalBedAngle(ll);
     recompute(fl);
-    toast.success(`Beete an Fläche ausgerichtet (${fl.params.angle}°).`);
+    toast.success(`Beete an Fläche ausgerichtet (${nf(fl.params.angle, 0)}°).`);
+  }
+  // Alle vorhandenen Flächen auf einmal an ihre Längsachse ausrichten – damit ältere
+  // Flächen (noch mit schrägem/Default-Winkel gespeichert) realistische Beet-Zahlen
+  // zeigen, ohne jede einzeln anklicken zu müssen.
+  function alignAllFields() {
+    const withGeo = fields.filter((f) => (f.latlngs || []).length >= 3);
+    if (!withGeo.length) { toast.info("Keine Flächen vorhanden."); return; }
+    let changed = 0;
+    withGeo.forEach((fl) => {
+      const opt = optimalBedAngle(fl.latlngs);
+      if (Math.abs(opt - (fl.params.angle || 0)) >= 0.5) {
+        fl.params.angle = opt;
+        fl.result = computeBeds(fl.latlngs, fl.params);
+        drawField(fl);
+        persistField(fl);
+        changed++;
+      }
+    });
+    renderPanel();
+    toast.success(changed ? `${changed} Fläche(n) an Längsachse ausgerichtet.` : "Alle Flächen sind bereits ausgerichtet.");
   }
   function setColor(fl: any, color: string) { fl.color = color; drawField(fl); renderPanel(); persistField(fl); }
   function setKultur(fl: any, kultur: string | null) {
@@ -692,6 +751,7 @@ export function initAcker(container: Element | null, services: Services): void {
       { icon: '<i class="bi bi-crosshair"></i>', label: "Hierhin zentrieren", action: () => map.panTo(ll) },
       { sep: true },
       { icon: '<i class="bi bi-arrows-fullscreen"></i>', label: "Alle Flächen anzeigen", disabled: !fields.some((f) => f.latlngs?.length >= 3), action: fitAll },
+      { icon: '<i class="bi bi-bounding-box"></i>', label: "Alle Beete an Flächen ausrichten", disabled: !fields.some((f) => f.latlngs?.length >= 3), action: alignAllFields },
       { icon: '<i class="bi bi-layers"></i>', label: "Kartentyp wechseln (Satellit/OSM)", action: switchBasemap },
       { sep: true },
       { icon: '<i class="bi bi-geo-alt"></i>', label: "Koordinaten kopieren", action: async () => {
@@ -833,10 +893,10 @@ export function initAcker(container: Element | null, services: Services): void {
             <label class="acker-fld">Reihenabstand (m)<input data-k="rowSp" type="number" step="0.05" min="0.05" value="${fl.params.rowSp}"/></label>
             <label class="acker-fld">Pflanzabstand (m)<input data-k="inRowSp" type="number" step="0.05" min="0.05" value="${fl.params.inRowSp}"/></label>
             <div class="acker-fld span2">
-              <div class="acker-angle-head"><span>Ausrichtung der Beete: <b>${fl.params.angle}°</b></span>
-                <button class="acker-align" data-act="align" type="button" title="Beete parallel zur längsten Kante ausrichten"><i class="bi bi-bounding-box"></i> an Fläche</button>
+              <div class="acker-angle-head"><span>Ausrichtung der Beete: <b>${nf(fl.params.angle, 0)}°</b></span>
+                <button class="acker-align" data-act="align" type="button" title="Beete an Längsachse der Fläche ausrichten"><i class="bi bi-bounding-box"></i> an Fläche</button>
               </div>
-              <input data-k="angle" type="range" min="0" max="180" step="5" value="${fl.params.angle}"/>
+              <input data-k="angle" type="range" min="0" max="180" step="1" value="${fl.params.angle}"/>
             </div>
           </div>
           <div class="acker-res">
@@ -884,7 +944,7 @@ export function initAcker(container: Element | null, services: Services): void {
           fl.result = computeBeds(fl.latlngs, fl.params);
           drawField(fl);
           updateFieldResults(d, fl);
-          if (k === "angle") { const ah = d.querySelector(".acker-angle-head b"); if (ah) ah.textContent = fl.params.angle + "°"; }
+          if (k === "angle") { const ah = d.querySelector(".acker-angle-head b"); if (ah) ah.textContent = nf(fl.params.angle, 0) + "°"; }
           persistField(fl);
         });
       });
@@ -1049,6 +1109,10 @@ export function initAcker(container: Element | null, services: Services): void {
       outline: null, bedsLayer: null, handles: [], result: { areaM2: 0, beds: [], bedMeters: 0, plants: 0 },
     };
     fields.push(fl); setDraw(false); selId = fl._key;
+    // Beete sofort entlang der Längsachse der Fläche ausrichten – sonst laufen sie
+    // im Default stur Ost–West und schneiden schräg über schräg liegende Flächen,
+    // was viel zu viele (kurze) Beete ergäbe.
+    fl.params.angle = optimalBedAngle(fl.latlngs);
     recompute(fl);
     persistField(fl, true);
   }
