@@ -2,7 +2,6 @@
 # ==========================================
 # Diese Datei definiert, welche Dateien von Git LFS verwaltet werden.
 # Git LFS speichert große Binärdateien separat und reduziert die Größe des Repositories.
-
 # SQLite Datenbanken (Haupt-Datendateien)
 # BVL Pflanzenschutz-Datenbank (komprimiert)
 public/data/bvl/*.sqlite.br filter=lfs diff=lfs merge=lfs -text
