@@ -1035,7 +1035,16 @@ export function initAcker(container: Element | null, services: Services): void {
     totalsEl.querySelector('[data-t="plants"]')!.textContent = nf(P);
   }
 
-  function select(key: string) { selId = key; fields.forEach((fl) => drawField(fl)); renderPanel(); }
+  function select(key: string) {
+    selId = key;
+    fields.forEach((fl) => drawField(fl));
+    renderPanel();
+    // Ausgewählte Fläche in der Seitenleiste sichtbar machen (kein manuelles Suchen).
+    setTimeout(() => {
+      const selEl = listEl?.querySelector(".acker-field.sel");
+      if (selEl) selEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 20);
+  }
   async function removeField(key: string) {
     const fl = fields.find((f) => f._key === key); if (!fl) return;
     clearFieldLayers(fl);
