@@ -1,0 +1,15 @@
+{
+  "name": "psm-geo",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "psm_geo_bg.wasm",
+    "psm_geo.js",
+    "psm_geo.d.ts"
+  ],
+  "main": "psm_geo.js",
+  "types": "psm_geo.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
