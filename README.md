@@ -233,16 +233,29 @@ npm run preview    # gebautes dist/ lokal servieren
 > Hinweis: Die EPPO/BBCH-Lookup-`.sqlite` unter `public/data/` werden per **Git LFS** verwaltet –
 > in einem Klon ohne `git lfs pull` sind es nur Pointer (führt lokal zu `SQLITE_NOTADB`, in Produktion korrekt).
 
-## 📦 Deploy (GitHub Pages, manuell)
+## 📦 Deploy (GitHub Pages) — **immer fertige `dist/` pushen, KEIN Workflow**
+
+> **Verbindliche Regel (bitte unbedingt beibehalten):** Der Deploy läuft **ausschließlich manuell** –
+> wir **bauen lokal** und **pushen die fertige `dist/`** direkt in den Branch `gh-pages`.
+> Es gibt **KEINE GitHub-Action / KEINEN CI-Workflow**, der auf `gh-pages` deployt, und es soll auch
+> keinen geben. Die Datei `.github/workflows/deploy.yml` ist bewusst **deaktiviert** (nur
+> `workflow_dispatch`, wird **nicht** genutzt) – **nicht reaktivieren**. Immer die **fertige `dist`**
+> ausliefern.
 
 ```bash
 npm run build
 npx gh-pages -d dist -t        # -t = Dotfiles (.nojekyll) mit deployen
 ```
 
-Deploy-Ziel: Branch `gh-pages` → https://pkd-brichter.github.io/psm/.
-`astro.config.mjs` setzt `site` + `base: "/psm/"` und stempelt pro Build eine `CACHE_VERSION` in `sw.js`
-(damit installierte PWAs den neuen Code bekommen).
+Deploy-Ziel: Branch `gh-pages` (Root) → https://pkd-brichter.github.io/psm/.
+
+- **`.nojekyll` liegt in `public/`** → **jeder** Build hat es automatisch in `dist/` (ohne `.nojekyll`
+  ignoriert GitHub Pages den `_astro/`-Ordner und die Seite bricht). Das `-t`-Flag bleibt als
+  zusätzliche Absicherung.
+- `astro.config.mjs` setzt `site` + `base: "/psm/"` und stempelt pro Build eine `CACHE_VERSION` in `sw.js`
+  (damit installierte PWAs den neuen Code bekommen).
+- **Jede Änderung sofort live:** Nach jeder Änderung auf `main` **immer** neu bauen und die **fertige
+  `dist/`** nach `gh-pages` pushen – nichts liegen lassen.
 
 ### 🌿 Branch-Modell & aktueller Stand (WICHTIG – bitte beibehalten)
 
@@ -251,9 +264,10 @@ Damit nichts mehr durcheinandergerät (eine klare Regel, an die sich alle – Me
 - **`main` = aktueller Quellcode & Arbeitsbranch = Source of Truth.** Alle Änderungen gehen **direkt auf
   `main`** – **keine Pull-Requests, kein Warten auf Freigabe, kein Branch-Wildwuchs.** Historie **linear**
   halten (Fast-Forward), **nie** force-pushen oder umschreiben. `main` ist per Definition der *aktuelle* Stand.
-- **`gh-pages` = generierter Deploy-Branch.** Enthält ausschließlich das gebaute `dist/`, das GitHub Pages
-  ausliefert (Pages-Quelle = Branch `gh-pages`, Root). **Nicht von Hand editieren** – wird nur über
-  `npm run build` + `npx gh-pages -d dist -t` neu erzeugt.
+- **`gh-pages` = generierter Deploy-Branch.** Enthält ausschließlich die **fertige, gebaute `dist/`**,
+  die GitHub Pages ausliefert (Pages-Quelle = Branch `gh-pages`, Root). **Nicht von Hand editieren** und
+  **NICHT per Workflow/Action** erzeugen – **immer manuell** die fertige `dist/` pushen
+  (`npm run build` + `npx gh-pages -d dist -t`).
 - **Live testen:** Quellcode-Änderung → `main` pushen; dann bauen + nach `gh-pages` deployen → erscheint
   unter dem GH-Pages-Link.
 - **Aufräum-Notiz:** Im Repo-Root liegt noch eine **alte Vanilla-JS-Version** (`index.html` + `assets/js/`,
