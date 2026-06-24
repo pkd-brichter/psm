@@ -16,6 +16,7 @@ import { getActiveDriverKey } from "@scripts/core/storage";
 import { extractSliceItems, updateSlice } from "@scripts/core/state";
 import { unitCrops, cropColor } from "@scripts/features/kultur/model";
 import { preloadGeoWasm, computeBeds as wasmComputeBeds } from "@scripts/core/geo-wasm";
+import { exportAckerFieldsPdf } from "@scripts/features/acker/pdfExport";
 
 interface Services {
   state: { getState: () => any; subscribe: (fn: (s: any) => void) => void };
@@ -190,6 +191,27 @@ export function initAcker(container: Element | null, services: Services): void {
     } catch (err) {
       console.error("[Acker] GeoJSON-Export fehlgeschlagen", err);
       toast.error("Export fehlgeschlagen.");
+    }
+  }
+
+  async function exportSingleFieldPdf(fl: any): Promise<void> {
+    try {
+      toast.info("PDF wird erstellt …");
+      await exportAckerFieldsPdf([fl], { singleField: fl, title: fl.name || "Ackerfläche" });
+    } catch (err) {
+      console.error("[Acker] PDF-Export fehlgeschlagen", err);
+      toast.error("PDF-Export fehlgeschlagen.");
+    }
+  }
+
+  async function exportAllFieldsPdf(): Promise<void> {
+    if (!fields.length) { toast.warning("Keine Flächen vorhanden."); return; }
+    try {
+      toast.info("PDF wird erstellt …");
+      await exportAckerFieldsPdf(fields, { title: "Acker-Übersicht" });
+    } catch (err) {
+      console.error("[Acker] PDF-Export fehlgeschlagen", err);
+      toast.error("PDF-Export fehlgeschlagen.");
     }
   }
 
@@ -866,6 +888,14 @@ export function initAcker(container: Element | null, services: Services): void {
     set("beds", nf(r.beds?.length || 0));
     set("meters", nf(r.bedMeters || 0) + " m");
     set("plants", estPlants(r.plants || 0));
+    const beds: any[] = r.beds || [];
+    if (beds.length) {
+      const avg = (fn: (b: any) => number) => beds.reduce((s: number, b: any) => s + (fn(b) || 0), 0) / beds.length;
+      set("rows-per-bed", nf(avg((b) => b.rows), 1));
+      set("per-row", nf(avg((b) => b.perRow), 1));
+      set("plants-per-bed", nf(avg((b) => b.plants), 0));
+      set("bed-area", nf(avg((b) => b.areaM2), 1) + " m²");
+    }
     updateTotals();
   }
 
@@ -967,6 +997,11 @@ export function initAcker(container: Element | null, services: Services): void {
             <div class="r"><span>Beete</span><b data-r="beds">${nf(fl.result?.beds?.length || 0)}</b></div>
             <div class="r"><span>Beetmeter</span><b data-r="meters">${nf(fl.result?.bedMeters || 0)} m</b></div>
             <div class="r"><span>Pflanzen (geschätzt)</span><b data-r="plants">${estPlants(fl.result?.plants || 0)}</b></div>
+            <div class="sep"></div>
+            <div class="r"><span>Reihen/Beet (⌀)</span><b data-r="rows-per-bed">–</b></div>
+            <div class="r"><span>Pflanzen/Reihe (⌀)</span><b data-r="per-row">–</b></div>
+            <div class="r"><span>Pflanzen/Beet (⌀)</span><b data-r="plants-per-bed">–</b></div>
+            <div class="r"><span>Beet-Fläche (⌀)</span><b data-r="bed-area">–</b></div>
           </div>
           <div class="acker-calib">
             <i class="bi bi-info-circle"></i> Beetzahl passt nicht zum echten Feld?
@@ -977,6 +1012,7 @@ export function initAcker(container: Element | null, services: Services): void {
             <button class="btn btn-sm acker-abtn" data-act="zoom" title="Auf Fläche zoomen"><i class="bi bi-zoom-in"></i></button>
             <button class="btn btn-sm acker-abtn" data-act="dup" title="Duplizieren"><i class="bi bi-copy"></i></button>
             <button class="btn btn-sm acker-abtn" data-act="rot" title="Beete drehen +15°"><i class="bi bi-arrow-clockwise"></i></button>
+            <button class="btn btn-sm acker-abtn" data-act="pdf" title="Als PDF exportieren"><i class="bi bi-file-earmark-pdf"></i></button>
             <span style="flex:1"></span>
             <button class="btn btn-sm acker-abtn danger" data-act="del" title="Löschen"><i class="bi bi-trash"></i></button>
           </div>
@@ -1024,6 +1060,7 @@ export function initAcker(container: Element | null, services: Services): void {
       d.querySelector('[data-act="zoom"]')!.addEventListener("click", () => zoomToField(fl));
       d.querySelector('[data-act="dup"]')!.addEventListener("click", () => duplicateField(fl));
       d.querySelector('[data-act="rot"]')!.addEventListener("click", () => rotateField(fl, 15));
+      d.querySelector('[data-act="pdf"]')!.addEventListener("click", () => exportSingleFieldPdf(fl));
       const colorInp = d.querySelector('[data-act="color"]') as HTMLInputElement;
       colorInp.addEventListener("input", (e: any) => liveRecolor(fl, e.target.value));
       colorInp.addEventListener("change", (e: any) => setColor(fl, e.target.value));
@@ -1302,6 +1339,7 @@ export function initAcker(container: Element | null, services: Services): void {
 
     el('[data-role="acker-draw"]')!.addEventListener("click", () => setDraw(true));
     el('[data-role="acker-export"]')?.addEventListener("click", exportGeoJson);
+    el('[data-role="acker-export-pdf"]')?.addEventListener("click", exportAllFieldsPdf);
     el('[data-role="acker-finish"]')!.addEventListener("click", finishDraw);
     el('[data-role="acker-cancel"]')!.addEventListener("click", () => setDraw(false));
     el('[data-role="acker-go"]')!.addEventListener("click", geocode);
@@ -1447,6 +1485,7 @@ function renderShell(): string {
     .acker-res{margin-top:var(--ap-3);background:var(--ap-surface-2);border-radius:var(--ap-r-sm);padding:var(--ap-3)}
     .acker-res .r{display:flex;justify-content:space-between;align-items:center;font-size:var(--ap-fs-sm);padding:3px 0;color:var(--ap-ink-2)}
     .acker-res .r b{color:var(--ap-green-dark);font-weight:var(--ap-w-bold)}
+    .acker-res .sep{height:1px;background:var(--ap-line,#e5e7eb);margin:5px 0}
     .acker-calib{margin-top:var(--ap-3);font-size:var(--ap-fs-xs);color:var(--ap-ink-2);line-height:1.5}
     .acker-calib i{color:var(--ap-info)}
     .acker-calib .calib-row{display:flex;gap:var(--ap-2);margin-top:var(--ap-2)}
@@ -1549,6 +1588,9 @@ function renderShell(): string {
             </div>
           </div>
           <div class="acker-export-box">
+            <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-export-pdf" style="width:100%;margin-bottom:6px">
+              <i class="bi bi-file-earmark-pdf me-1"></i>Alle Flächen als PDF
+            </button>
             <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-export" style="width:100%">
               <i class="bi bi-geo me-1"></i>Als GeoJSON exportieren
             </button>
