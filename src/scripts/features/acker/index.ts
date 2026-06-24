@@ -797,21 +797,28 @@ export function initAcker(container: Element | null, services: Services): void {
     ], `Eckpunkt ${idx + 1}`);
   }
 
-  // Karten-Hintergrund durchschalten: Satellit (Esri, weltweit) → Luftbild BW
-  // (LGL DOP20, sehr scharf, nur BW) → OSM (Straßenkarte) → zurück zu Satellit.
+  // Karten-Hintergrund durchschalten. Standard ist „Luftbild BW" (Esri-Satellit +
+  // LGL-DOP-Overlay). Reihenfolge: Luftbild BW → Satellit (Esri, weltweit) →
+  // Straßenkarte (OSM) → zurück zu Luftbild BW.
   function switchBasemap() {
     const { sat, dop, osm } = baseLayers;
     if (!sat || !osm) return;
-    const order = [
-      { layer: sat, label: "Satellit (weltweit)" },
-      { layer: dop, label: "Luftbild BW – scharf (20 cm)" },
-      { layer: osm, label: "Straßenkarte (OSM)" },
-    ].filter((o) => o.layer);
-    const curIdx = order.findIndex((o) => map.hasLayer(o.layer));
-    const next = order[(curIdx + 1) % order.length];
-    order.forEach((o) => { if (map.hasLayer(o.layer)) map.removeLayer(o.layer); });
-    next.layer.addTo(map);
-    toast.info("Karte: " + next.label);
+    // Aktuellen Modus erkennen: DOP sichtbar → Luftbild; sonst Esri → Satellit; sonst OSM.
+    let cur = 2;
+    if (dop && map.hasLayer(dop)) cur = 0;
+    else if (map.hasLayer(sat)) cur = 1;
+    const next = (cur + 1) % 3;
+    [sat, dop, osm].forEach((l) => { if (l && map.hasLayer(l)) map.removeLayer(l); });
+    if (next === 0) {
+      sat.addTo(map); if (dop) dop.addTo(map); // DOP zuletzt → liegt oben
+      toast.info("Karte: Luftbild BW – scharf (20 cm)");
+    } else if (next === 1) {
+      sat.addTo(map);
+      toast.info("Karte: Satellit (weltweit)");
+    } else {
+      osm.addTo(map);
+      toast.info("Karte: Straßenkarte (OSM)");
+    }
   }
 
   function openMapMenu(e: any) {
@@ -822,7 +829,7 @@ export function initAcker(container: Element | null, services: Services): void {
       { icon: '<i class="bi bi-crosshair"></i>', label: "Hierhin zentrieren", action: () => map.panTo(ll) },
       { sep: true },
       { icon: '<i class="bi bi-arrows-fullscreen"></i>', label: "Alle Flächen anzeigen", disabled: !fields.some((f) => f.latlngs?.length >= 3), action: fitAll },
-      { icon: '<i class="bi bi-layers"></i>', label: "Kartentyp wechseln (Satellit / Luftbild BW / OSM)", action: switchBasemap },
+      { icon: '<i class="bi bi-layers"></i>', label: "Kartentyp wechseln (Luftbild BW / Satellit / OSM)", action: switchBasemap },
       { sep: true },
       { icon: '<i class="bi bi-geo-alt"></i>', label: "Koordinaten kopieren", action: async () => {
           try { await navigator.clipboard.writeText(`${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)}`); toast.success("Koordinaten kopiert."); }
@@ -1313,11 +1320,13 @@ export function initAcker(container: Element | null, services: Services): void {
     const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles © Esri" }).addTo(map);
     // Amtliche Luftbilder Baden-Württemberg (LGL DOP20, 20 cm, Open Data, kein API-Key).
-    // Deutlich schärfer als Esri – allerdings nur innerhalb BW; daher nicht Default.
+    // STANDARD: als transparentes PNG über dem Esri-Satelliten. Innerhalb BW sieht
+    // man das scharfe Luftbild; außerhalb BW liefert der Dienst transparente Kacheln,
+    // sodass nahtlos der Esri-Satellit durchscheint (kein weißer „Loch"-Bereich).
     const dop = L.tileLayer.wms("https://owsproxy.lgl-bw.de/owsproxy/ows/WMS_LGL-BW_ATKIS_DOP_20_C", {
-      layers: "IMAGES_DOP_20_RGB", format: "image/jpeg", transparent: false,
+      layers: "IMAGES_DOP_20_RGB", format: "image/png", transparent: true,
       maxZoom: 21, maxNativeZoom: 20, attribution: "Luftbild © LGL-BW (dl-de/by-2-0)",
-    });
+    }).addTo(map);
     const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
     baseLayers = { sat, dop, osm };
     // Vorhandene Freiland-Standorte (Name + Koordinaten + Fläche) als Marker-Layer
@@ -1582,7 +1591,7 @@ function renderShell(): string {
             <button data-role="ctrl-fit" title="Alle Flächen anzeigen"><i class="bi bi-arrows-fullscreen"></i></button>
             <button data-role="ctrl-labels" class="on" title="Beschriftungen ein/aus"><i class="bi bi-tag"></i></button>
             <button data-role="ctrl-beds" class="on" title="Beete-Detail ein/aus"><i class="bi bi-grid-3x3"></i></button>
-            <button data-role="ctrl-basemap" title="Kartentyp (Satellit / Luftbild BW / OSM)"><i class="bi bi-layers"></i></button>
+            <button data-role="ctrl-basemap" title="Kartentyp (Luftbild BW / Satellit / OSM)"><i class="bi bi-layers"></i></button>
           </div>
           <div class="acker-banner" data-role="acker-banner">
             <b>Ecke für Ecke anklicken</b> – die Vorschau folgt dem Cursor. Zum Abschließen den <b>ersten Punkt</b> anklicken (oder <b>Enter</b>).<br>
