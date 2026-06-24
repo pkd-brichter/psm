@@ -1202,8 +1202,9 @@ function ensureAnbauTable(targetDb = db) {
     CREATE INDEX IF NOT EXISTS idx_anbau_unit ON anbau_kultur(flaeche_typ, flaeche_id);
     CREATE INDEX IF NOT EXISTS idx_anbau_status ON anbau_kultur(status);
     CREATE INDEX IF NOT EXISTS idx_anbau_pflanz ON anbau_kultur(pflanz_datum);
-    CREATE INDEX IF NOT EXISTS idx_anbau_satz ON anbau_kultur(satz_gruppe);
   `);
+  // Index auf satz_gruppe NICHT hier – die Spalte wird bei bestehenden DBs erst
+  // in Migration v25 per ALTER ergänzt; der Index wird dort danach angelegt.
 }
 
 // Kultur-Stammdaten: Bibliothek anbaubarer Kulturen mit gärtnerischen Kennwerten
@@ -3602,7 +3603,6 @@ async function applySchema() {
       });
       db.exec("CREATE INDEX IF NOT EXISTS idx_anbau_satz ON anbau_kultur(satz_gruppe)");
       ensureKulturStammTable(db);
-      seedKulturStammIfEmpty(db);
       db.exec("PRAGMA user_version = 25");
       db.exec("COMMIT");
       console.log("Database migrated to version 25 successfully");
@@ -3610,6 +3610,13 @@ async function applySchema() {
       db.exec("ROLLBACK");
       console.error("Migration to version 25 failed:", error);
       throw error;
+    }
+    // Bibliothek-Seed GETRENNT von der Schema-Transaktion und fehlertolerant:
+    // ein Seed-Problem darf das Öffnen der DB niemals blockieren.
+    try {
+      seedKulturStammIfEmpty(db);
+    } catch (seedErr) {
+      console.warn("kultur_stamm Seed übersprungen (nicht fatal):", seedErr);
     }
   }
 }
