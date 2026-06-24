@@ -722,6 +722,30 @@ export function initAcker(container: Element | null, services: Services): void {
     if (!crop) return "";
     return `<span class="acker-cropchip" title="Kultur"><span class="dot" style="background:${escapeHtml(crop.color || "#94a3b8")}"></span>${escapeHtml(crop.name)}</span>`;
   }
+  // Pflanzenzahl ist eine grobe SCHÄTZUNG → gerundet + „≈", damit sie nicht
+  // fälschlich exakt wirkt.
+  function estPlants(n: number): string {
+    n = Math.round(n || 0);
+    if (n <= 0) return "0";
+    let step = 100;
+    if (n >= 100000) step = 1000; else if (n >= 10000) step = 500;
+    return "≈ " + nf(Math.round(n / step) * step);
+  }
+  // Kalibrierung: der Gärtner gibt die ECHTE Beetzahl ein → Bettbreite wird so
+  // gesetzt, dass die App genauso viele Beete zeigt (Wegbreite bleibt). So muss
+  // niemand rechnen. (Beete = Quer-Breite ÷ (Bettbreite+Wegbreite).)
+  function calibrateBeds(fl: any, realCount: number) {
+    const cur = fl.result?.beds?.length || 0;
+    const pitch = fl.params.bedW + fl.params.pathW;
+    if (cur < 1 || pitch <= 0) { toast.warning("Erst Beete berechnen lassen."); return; }
+    const perp = cur * pitch; // ~Quer-Breite der Fläche in Metern
+    const newBedW = +((perp / realCount) - fl.params.pathW).toFixed(2);
+    if (newBedW < 0.1) { toast.warning("Wegbreite ist größer als der gewünschte Abstand – erst Wegbreite verkleinern."); return; }
+    fl.params.bedW = newBedW;
+    recompute(fl);
+    toast.success(`Bettbreite ${nf(newBedW, 2)} m → ${fl.result?.beds?.length || 0} Beete.`);
+  }
+
   // Gesamt-Summen aktualisieren, ohne das Panel neu zu bauen.
   function updateTotals() {
     if (!totalsEl) return;
@@ -731,7 +755,7 @@ export function initAcker(container: Element | null, services: Services): void {
     set('[data-t="area"]', nf(A) + " m² · " + nf(A / 10000, 3) + " ha");
     set('[data-t="beds"]', nf(B));
     set('[data-t="meters"]', nf(M) + " m");
-    set('[data-t="plants"]', nf(P));
+    set('[data-t="plants"]', estPlants(P));
   }
   // Nur die Ergebniszahlen EINER Fläche im Panel aktualisieren – ohne die ganze
   // Liste neu zu rendern (sonst verliert der Slider/das Eingabefeld beim Tippen
@@ -739,11 +763,12 @@ export function initAcker(container: Element | null, services: Services): void {
   function updateFieldResults(d: HTMLElement, fl: any) {
     const r = fl.result || {};
     const stat = d.querySelector(".acker-stat"); if (stat) stat.textContent = nf(r.plants || 0) + " Pfl.";
-    const b = d.querySelectorAll(".acker-res .r b");
-    if (b[0]) b[0].textContent = nf(r.areaM2 || 0) + " m² · " + nf((r.areaM2 || 0) / 10000, 3) + " ha";
-    if (b[1]) b[1].textContent = nf(r.beds?.length || 0);
-    if (b[2]) b[2].textContent = nf(r.bedMeters || 0) + " m";
-    if (b[3]) b[3].textContent = nf(r.plants || 0);
+    const set = (k: string, txt: string) => { const e = d.querySelector(`[data-r="${k}"]`); if (e) e.textContent = txt; };
+    set("area", nf(r.areaM2 || 0) + " m² · " + nf((r.areaM2 || 0) / 10000, 3) + " ha");
+    set("pitch", nf(fl.params.bedW + fl.params.pathW, 2) + " m");
+    set("beds", nf(r.beds?.length || 0));
+    set("meters", nf(r.bedMeters || 0) + " m");
+    set("plants", estPlants(r.plants || 0));
     updateTotals();
   }
 
@@ -780,7 +805,7 @@ export function initAcker(container: Element | null, services: Services): void {
       ? `<div class="ai-next"><i class="bi bi-arrow-right-short"></i> Danach: <b>${escapeHtml(next.kultur || "")}</b>${next.pflanzDatum ? " ab " + fmtD(next.pflanzDatum) : ""}</div>`
       : "";
     const metrics = !isHaus && unit.fieldRef
-      ? `<div class="ai-metrics"><span><b>${nf(unit.fieldRef.result?.beds?.length || 0)}</b> Beete</span><span><b>${nf(unit.fieldRef.result?.bedMeters || 0)}</b> m</span><span><b>${nf(unit.fieldRef.result?.plants || 0)}</b> Pfl.</span></div>`
+      ? `<div class="ai-metrics"><span><b>${nf(unit.fieldRef.result?.beds?.length || 0)}</b> Beete</span><span><b>${nf(unit.fieldRef.result?.bedMeters || 0)}</b> m</span><span><b>${estPlants(unit.fieldRef.result?.plants || 0)}</b> Pfl.</span></div>`
       : "";
     const tasks = `<div class="ai-tasks${openTasks ? " has" : ""}"><i class="bi ${openTasks ? "bi-list-check" : "bi-check2-circle"}"></i> ${openTasks ? openTasks + " Aufgabe" + (openTasks === 1 ? "" : "n") + " offen" : "Nichts offen"}</div>`;
     card.innerHTML = `
@@ -840,10 +865,15 @@ export function initAcker(container: Element | null, services: Services): void {
             </div>
           </div>
           <div class="acker-res">
-            <div class="r"><span>Fläche</span><b>${nf(fl.result?.areaM2 || 0)} m² · ${nf((fl.result?.areaM2 || 0) / 10000, 3)} ha</b></div>
-            <div class="r"><span>Beete</span><b>${nf(fl.result?.beds?.length || 0)}</b></div>
-            <div class="r"><span>Beetmeter</span><b>${nf(fl.result?.bedMeters || 0)} m</b></div>
-            <div class="r"><span>Pflanzen</span><b>${nf(fl.result?.plants || 0)}</b></div>
+            <div class="r"><span>Fläche</span><b data-r="area">${nf(fl.result?.areaM2 || 0)} m² · ${nf((fl.result?.areaM2 || 0) / 10000, 3)} ha</b></div>
+            <div class="r"><span>Abstand (Mitte–Mitte)</span><b data-r="pitch">${nf(fl.params.bedW + fl.params.pathW, 2)} m</b></div>
+            <div class="r"><span>Beete</span><b data-r="beds">${nf(fl.result?.beds?.length || 0)}</b></div>
+            <div class="r"><span>Beetmeter</span><b data-r="meters">${nf(fl.result?.bedMeters || 0)} m</b></div>
+            <div class="r"><span>Pflanzen (geschätzt)</span><b data-r="plants">${estPlants(fl.result?.plants || 0)}</b></div>
+          </div>
+          <div class="acker-calib">
+            <i class="bi bi-info-circle"></i> Beetzahl passt nicht zum echten Feld?
+            <span class="calib-row"><input type="number" min="1" max="999" data-calib placeholder="echte Beetzahl" /><button class="acker-align" data-act="calib" type="button"><i class="bi bi-magic"></i> anpassen</button></span>
           </div>
           <div class="acker-actions">
             <label class="acker-colorbtn" title="Farbe wählen"><input type="color" data-act="color" value="${fl.color}"><i class="bi bi-palette"></i></label>
@@ -889,6 +919,10 @@ export function initAcker(container: Element | null, services: Services): void {
         });
       });
       d.querySelector('[data-act="align"]')?.addEventListener("click", () => alignBedsToField(fl));
+      d.querySelector('[data-act="calib"]')?.addEventListener("click", () => {
+        const v = Math.round(Number((d.querySelector("[data-calib]") as HTMLInputElement)?.value) || 0);
+        if (v >= 1) calibrateBeds(fl, v); else toast.warning("Bitte die echte Beetzahl eingeben.");
+      });
       d.querySelector('[data-act="del"]')!.addEventListener("click", () => removeField(fl._key));
       d.querySelector('[data-act="zoom"]')!.addEventListener("click", () => zoomToField(fl));
       d.querySelector('[data-act="dup"]')!.addEventListener("click", () => duplicateField(fl));
@@ -1257,6 +1291,11 @@ function renderShell(): string {
     .acker-res{margin-top:10px;background:var(--surface-2,rgba(255,255,255,.04));border-radius:8px;padding:8px 10px}
     .acker-res .r{display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0}
     .acker-res .r b{color:#22c55e}
+    .acker-calib{margin-top:8px;font-size:11.5px;color:var(--text-muted);line-height:1.5}
+    .acker-calib i{color:#0891b2}
+    .acker-calib .calib-row{display:flex;gap:6px;margin-top:5px}
+    .acker-calib input{flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border-1);border-radius:7px;font-size:12.5px;background:var(--surface-2,rgba(255,255,255,.04));color:var(--text)}
+    .acker-calib button{white-space:nowrap}
     .acker-actions{display:flex;justify-content:space-between;margin-top:10px;gap:8px}
     .acker-vhandle{background:#fff;border:2px solid #15803d;border-radius:50%;width:12px!important;height:12px!important;margin-left:-6px!important;margin-top:-6px!important;cursor:grab}
     .acker-outline-grab{cursor:grab}

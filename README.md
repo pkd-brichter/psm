@@ -139,7 +139,10 @@ Kartentyp) sitzen im linken Panel.
   Detail NICHT → die Weg-Lücken zeigen den Boden. Beete erscheinen erst, wenn Beet **und** Weg sichtbar
   sind (LOD in `bedsVisibleFor`), sonst ruhige Übersichts-Füllung. `computeBeds` (turf) erzeugt die
   Streifen; **`angle` ⇒ Beet-Peilung = 90°+angle** (empirisch); „**Beete an Fläche ausrichten**" setzt
-  `angle` parallel zur längsten Kante.
+  `angle` parallel zur längsten Kante. **Beetzahl = Quer-Breite ÷ (Bettbreite+Wegbreite)** – gegen
+  bekannte Rechtecke verifiziert (achs-parallel exakt). Pflanzenzahl ist eine **gerundete Schätzung**
+  (`estPlants`, „≈"). **Kalibrierung** (`calibrateBeds`): echte Beetzahl eintippen → Bettbreite wird so
+  gesetzt, dass die App genauso viele Beete zeigt (Wegbreite bleibt).
 - **Bewegen & bearbeiten:** ausgewählte Fläche per Maus **ziehen = ganzes Polygon verschieben**
   (ideal zum Vergleichen von Kopien); Eckpunkte als Handles; **Parameter-Eingaben aktualisieren live
   OHNE Panel-Neuaufbau** (sonst verliert der Slider den Fokus / „springt").
