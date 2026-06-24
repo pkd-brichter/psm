@@ -30,6 +30,9 @@
   Header-Reiter = Unter-Ansichten des Bereichs (siehe unten).
 - **Nicht (mehr) vorhanden:** die **BVL-Zulassungsdatenbank** wurde komplett entfernt (Pestalozzi nutzt
   eigene Kulturen/Mittel); ein „Performance Monitor"-Overlay wurde entfernt. EPPO/BBCH-Codes bleiben.
+- **Branch-Modell (kurz):** `main` = **aktueller Quellcode & Arbeitsbranch** (Source of Truth, immer aktuell
+  halten, **keine PRs**, Historie **linear**); `gh-pages` = **generierter Deploy-Branch**, den GitHub Pages
+  ausliefert (nie von Hand editieren). Voller Stand → unten unter **Deploy**.
 
 ---
 
@@ -205,6 +208,22 @@ npx gh-pages -d dist -t        # -t = Dotfiles (.nojekyll) mit deployen
 Deploy-Ziel: Branch `gh-pages` → https://pkd-brichter.github.io/psm/.
 `astro.config.mjs` setzt `site` + `base: "/psm/"` und stempelt pro Build eine `CACHE_VERSION` in `sw.js`
 (damit installierte PWAs den neuen Code bekommen).
+
+### 🌿 Branch-Modell & aktueller Stand (WICHTIG – bitte beibehalten)
+
+Damit nichts mehr durcheinandergerät (eine klare Regel, an die sich alle – Menschen wie Agenten – halten):
+
+- **`main` = aktueller Quellcode & Arbeitsbranch = Source of Truth.** Alle Änderungen gehen **direkt auf
+  `main`** – **keine Pull-Requests, kein Warten auf Freigabe, kein Branch-Wildwuchs.** Historie **linear**
+  halten (Fast-Forward), **nie** force-pushen oder umschreiben. `main` ist per Definition der *aktuelle* Stand.
+- **`gh-pages` = generierter Deploy-Branch.** Enthält ausschließlich das gebaute `dist/`, das GitHub Pages
+  ausliefert (Pages-Quelle = Branch `gh-pages`, Root). **Nicht von Hand editieren** – wird nur über
+  `npm run build` + `npx gh-pages -d dist -t` neu erzeugt.
+- **Live testen:** Quellcode-Änderung → `main` pushen; dann bauen + nach `gh-pages` deployen → erscheint
+  unter dem GH-Pages-Link.
+- **Aufräum-Notiz:** Im Repo-Root liegt noch eine **alte Vanilla-JS-Version** (`index.html` + `assets/js/`,
+  Pre-Astro, inkl. der entfernten BVL-DB). Sie wird **nicht** ausgeliefert (live = Astro-Build aus `src/`)
+  und kann bei Gelegenheit entfernt werden.
 
 ## 📁 Projektstruktur (Auszug)
 
