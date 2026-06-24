@@ -23,8 +23,12 @@ interface Services {
 }
 
 const palette = [
-  "#ef4444", "#3b82f6", "#a855f7", "#f59e0b",
-  "#06b6d4", "#ec4899", "#84cc16", "#14b8a6",
+  "#c62828", "#d32f2f", "#e53935", "#ef5350",  // Rot
+  "#bf360c", "#e64a19", "#f57c00", "#ffb300",  // Orange / Amber
+  "#1b5e20", "#2e7d32", "#388e3c", "#66bb6a",  // Grün
+  "#0d47a1", "#1565c0", "#0277bd", "#42a5f5",  // Blau
+  "#4a148c", "#6a1b9a", "#8e24aa", "#e91e63",  // Lila / Pink
+  "#3e2723", "#4e342e", "#00695c", "#546e7a",  // Erde / Neutral
 ];
 const defaultsParams = () => ({
   bedW: 1.2, pathW: 0.4, rowSp: 0.5, inRowSp: 0.4, angle: 0,
@@ -574,7 +578,18 @@ export function initAcker(container: Element | null, services: Services): void {
         const sub = document.createElement("div"); sub.className = "acker-ctx-sub";
         buildCtxItems(sub, it.submenu);
         row.appendChild(sub);
-        row.addEventListener("pointerenter", () => positionSubmenu(row, sub));
+        let subTimer: any = null;
+        const openSub = () => {
+          if (subTimer) { clearTimeout(subTimer); subTimer = null; }
+          row.parentElement?.querySelectorAll(".acker-ctx-sub.open").forEach((s: any) => { if (s !== sub) s.classList.remove("open"); });
+          positionSubmenu(row, sub);
+          sub.classList.add("open");
+        };
+        const closeSub = () => { subTimer = setTimeout(() => { sub.classList.remove("open"); subTimer = null; }, 150); };
+        row.addEventListener("pointerenter", openSub);
+        row.addEventListener("pointerleave", closeSub);
+        sub.addEventListener("pointerenter", () => { if (subTimer) { clearTimeout(subTimer); subTimer = null; } });
+        sub.addEventListener("pointerleave", closeSub);
       } else if (!it.disabled) {
         row.addEventListener("click", (e) => { e.stopPropagation(); if (it.keepOpen) { it.action?.(); } else { closeCtx(); it.action?.(); } });
       }
@@ -613,19 +628,19 @@ export function initAcker(container: Element | null, services: Services): void {
     recompute(fl);
     toast.info(`Beete-Ausrichtung: ${fl.params.angle}°`);
   }
-  // Beete parallel zur längsten Kante ausrichten (ein Klick statt Slider-Fummelei).
-  // Beet-Peilung = 90° + angle → angle = Kanten-Peilung − 90° (empirisch geprüft).
-  function alignBedsToField(fl: any) {
-    const ll = fl.latlngs || [];
-    if (ll.length < 2) return;
-    // Längste Kante finden → deren Peilwinkel als Beet-Ausrichtung nutzen
+  // Längste Kante finden → Beet-Winkel ableiten (Beet-Peilung = Kanten-Peilung − 90°).
+  function computeFieldAngle(latlngs: any[]): number {
+    if (latlngs.length < 2) return 0;
     let bestLen = -1, bearing = 0;
-    for (let i = 0; i < ll.length; i++) {
-      const a = ll[i], b = ll[(i + 1) % ll.length];
+    for (let i = 0; i < latlngs.length; i++) {
+      const a = latlngs[i], b = latlngs[(i + 1) % latlngs.length];
       const len = haversineM(a[0], a[1], b[0], b[1]);
       if (len > bestLen) { bestLen = len; bearing = bearingDeg(a[0], a[1], b[0], b[1]); }
     }
-    fl.params.angle = ((Math.round(bearing - 90) % 180) + 180) % 180;
+    return ((Math.round(bearing - 90) % 180) + 180) % 180;
+  }
+  function alignBedsToField(fl: any) {
+    fl.params.angle = computeFieldAngle(fl.latlngs || []);
     void recompute(fl);
     toast.success(`Beete an Fläche ausgerichtet (${fl.params.angle}°).`);
   }
@@ -1153,7 +1168,7 @@ export function initAcker(container: Element | null, services: Services): void {
       _key: "new-" + (++keySeq), id: null, name: "Fläche " + (fields.length + 1),
       kultur: null, eppoCode: null, standortId: null,
       color: palette[fields.length % palette.length],
-      latlngs: pts.map((p) => p.slice()), params: defaultsParams(),
+      latlngs: pts.map((p) => p.slice()), params: { ...defaultsParams(), angle: computeFieldAngle(pts) },
       outline: null, bedsLayer: null, handles: [], result: { areaM2: 0, beds: [], bedMeters: 0, plants: 0 },
     };
     fields.push(fl); setDraw(false); selId = fl._key;
@@ -1429,10 +1444,12 @@ function renderShell(): string {
     .acker-ctx-item.danger .ic{color:var(--ap-danger)}
     .acker-ctx-item.disabled{opacity:.4;cursor:default}
     .acker-ctx-item.disabled:hover{background:transparent}
-    .acker-ctx-sub{display:none;position:absolute;left:calc(100% + 3px);top:-5px;min-width:210px;max-height:62vh;overflow-y:auto;overflow-x:hidden;background:var(--ap-surface);border:1px solid var(--ap-line);border-radius:var(--ap-r-lg);box-shadow:var(--ap-shadow-lg);padding:var(--ap-2)}
-    .acker-ctx-item.has-sub:hover>.acker-ctx-sub,.acker-ctx-sub:hover{display:block}
-    .acker-ctx-swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--ap-2);padding:7px 10px}
-    .acker-sw{width:30px;height:30px;border-radius:var(--ap-r-sm);border:2px solid rgba(0,0,0,.12);cursor:pointer;padding:0}
+    .acker-ctx-sub{display:none;position:absolute;left:calc(100% + 1px);top:-5px;min-width:210px;max-height:62vh;overflow-y:auto;overflow-x:hidden;background:var(--ap-surface);border:1px solid var(--ap-line);border-radius:var(--ap-r-lg);box-shadow:var(--ap-shadow-lg);padding:var(--ap-2)}
+    .acker-ctx-sub.open{display:block}
+    .acker-ctx-item.has-sub::after{content:'';position:absolute;top:0;bottom:0;left:100%;width:6px}
+    .acker-ctx-swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;padding:9px 10px}
+    .acker-sw{width:26px;height:26px;border-radius:4px;border:2px solid rgba(0,0,0,.12);cursor:pointer;padding:0;transition:transform .1s}
+    .acker-sw:hover{transform:scale(1.18);border-color:rgba(0,0,0,.3)}
     .acker-sw.on{box-shadow:0 0 0 2px var(--ap-ink)}
     .acker-sw-custom{grid-column:1 / -1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px dashed var(--ap-line-2);border-radius:var(--ap-r-sm);padding:7px;cursor:pointer;font-size:var(--ap-fs-xs);color:var(--ap-ink-2)}
     .acker-sw-custom input{width:26px;height:26px;border:0;background:none;padding:0;cursor:pointer}
