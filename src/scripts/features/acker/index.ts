@@ -1224,130 +1224,132 @@ export function initAcker(container: Element | null, services: Services): void {
 function renderShell(): string {
   return `
   <style>
-    .acker-wrap{display:flex;gap:0;height:calc(100vh - 80px);min-height:460px;border:1px solid var(--border-1);border-radius:12px;overflow:hidden;background:var(--surface-1,#0f172a)}
-    .acker-side{width:340px;min-width:300px;display:flex;flex-direction:column;border-right:1px solid var(--border-1);overflow:hidden}
-    .acker-scroll{overflow-y:auto;padding:12px 14px;flex:1}
+    .acker-wrap{display:flex;gap:0;height:calc(100vh - 80px);min-height:480px;border:1px solid var(--ap-line);border-radius:var(--ap-r-lg);overflow:hidden;background:var(--ap-surface);box-shadow:var(--ap-shadow-sm)}
+    .acker-side{width:360px;min-width:320px;display:flex;flex-direction:column;border-right:1px solid var(--ap-line);overflow:hidden;background:var(--ap-surface)}
+    .acker-scroll{overflow-y:auto;padding:var(--ap-4);flex:1;display:flex;flex-direction:column;gap:var(--ap-3)}
     .acker-map{flex:1;min-height:300px}
-    .acker-search{display:flex;gap:6px;margin-bottom:10px}
+    .acker-search{display:flex;gap:var(--ap-2)}
     .acker-search input{flex:1}
-    .acker-banner{display:none;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:var(--text);padding:10px 12px;border-radius:8px;font-size:12.5px;margin-bottom:10px;line-height:1.45}
-    .acker-banner .row{display:flex;gap:8px;margin-top:8px}
-    .acker-totals{background:var(--surface-2,rgba(255,255,255,.04));border:1px solid var(--border-1);border-radius:10px;padding:12px;margin-bottom:12px}
-    .acker-totals .t-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
-    .acker-totals .big{font-size:20px;font-weight:700;color:#22c55e}
-    .acker-legend{display:flex;align-items:center;gap:13px;margin-top:9px;padding-top:8px;border-top:1px solid var(--border-1);font-size:11.5px;color:var(--text-muted)}
+    .acker-banner{display:none;background:var(--ap-green-tint);border:1px solid var(--ap-green-line);color:var(--ap-ink);padding:var(--ap-3) var(--ap-4);border-radius:var(--ap-r);font-size:var(--ap-fs-sm);line-height:1.5}
+    .acker-banner .row{display:flex;gap:var(--ap-2);margin-top:var(--ap-3)}
+    .acker-totals{background:var(--ap-green-tint);border:1px solid var(--ap-green-line);border-radius:var(--ap-r-lg);padding:var(--ap-4)}
+    .acker-totals .t-row{display:flex;justify-content:space-between;align-items:center;font-size:var(--ap-fs-sm);padding:var(--ap-1) 0;color:var(--ap-ink-2)}
+    .acker-totals .t-row b{color:var(--ap-ink);font-weight:var(--ap-w-bold)}
+    .acker-totals .big{font-size:var(--ap-fs-xl);font-weight:var(--ap-w-black);color:var(--ap-green)}
+    .acker-legend{display:flex;align-items:center;gap:var(--ap-3);margin-top:var(--ap-2);padding-top:var(--ap-3);border-top:1px solid var(--ap-green-line);font-size:var(--ap-fs-xs);color:var(--ap-ink-3)}
     .acker-legend .lg{display:inline-flex;align-items:center;gap:5px}
     .acker-legend .lg i{width:17px;height:11px;border-radius:3px;display:inline-block;flex:none}
-    .acker-legend .lg i.bed{background:#22c55e;box-shadow:inset 0 0 0 1px #fff}
-    .acker-legend .lg i.path{background:transparent;border:1px dashed var(--text-dim,#64748b)}
-    .acker-legend .lg-hint{margin-left:auto;font-size:10px;color:var(--text-dim)}
-    .acker-empty{color:var(--text-muted,#94a3b8);font-size:13px;text-align:center;padding:22px 8px;line-height:1.5}
-    .acker-field{border:1px solid var(--border-1);border-radius:10px;margin-bottom:10px;overflow:hidden}
-    .acker-field.sel{border-color:#22c55e;box-shadow:0 0 0 1px #22c55e}
-    .acker-fhead{display:flex;align-items:center;gap:8px;padding:9px 10px;cursor:pointer}
-    .acker-swatch{width:14px;height:14px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.2)}
-    .acker-name{flex:1;font-size:13.5px;font-weight:600;border:0;background:transparent;outline:none;color:var(--text);min-width:0}
-    .acker-stat{font-size:12px;color:var(--text-muted,#94a3b8)}
-    .acker-cropchip{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text);background:var(--surface-2,rgba(255,255,255,.05));border:1px solid var(--border-1);border-radius:20px;padding:2px 9px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .acker-legend .lg i.bed{background:var(--ap-green-bright);box-shadow:inset 0 0 0 1px #fff}
+    .acker-legend .lg i.path{background:transparent;border:1px dashed var(--ap-ink-3)}
+    .acker-legend .lg-hint{margin-left:auto;color:var(--ap-ink-3)}
+    .acker-empty{color:var(--ap-ink-3);font-size:var(--ap-fs-sm);text-align:center;padding:var(--ap-6) var(--ap-2);line-height:1.6}
+    .acker-field{border:1px solid var(--ap-line);border-radius:var(--ap-r);margin-bottom:var(--ap-3);overflow:hidden;background:var(--ap-surface);transition:box-shadow var(--ap-t),border-color var(--ap-t)}
+    .acker-field.sel{border-color:var(--ap-green);box-shadow:0 0 0 2px var(--ap-green-soft)}
+    .acker-fhead{display:flex;align-items:center;gap:var(--ap-2);padding:var(--ap-3);cursor:pointer}
+    .acker-swatch{width:18px;height:18px;border-radius:6px;flex:none;border:1px solid rgba(0,0,0,.14)}
+    .acker-name{flex:1;font-size:var(--ap-fs-md);font-weight:var(--ap-w-bold);border:0;background:transparent;outline:none;color:var(--ap-ink);min-width:0}
+    .acker-stat{font-size:var(--ap-fs-xs);color:var(--ap-ink-3);font-weight:var(--ap-w-med)}
+    .acker-cropchip{display:inline-flex;align-items:center;gap:5px;font-size:var(--ap-fs-xs);color:var(--ap-ink);background:var(--ap-surface-2);border:1px solid var(--ap-line);border-radius:var(--ap-r-pill);padding:3px 10px;max-width:120px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
     .acker-cropchip .dot{width:8px;height:8px;border-radius:50%;flex:none}
-    .acker-angle-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
-    .acker-align{display:inline-flex;align-items:center;gap:4px;font-size:11px;border:1px solid var(--border-1);background:var(--surface-1);color:var(--text-muted);border-radius:7px;padding:4px 8px;cursor:pointer;white-space:nowrap}
-    .acker-align:hover{background:var(--surface-3);color:#15803d;border-color:#86efac}
+    .acker-angle-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ap-2);margin-bottom:6px}
+    .acker-align{display:inline-flex;align-items:center;gap:5px;font-size:var(--ap-fs-xs);border:1px solid var(--ap-line-2);background:var(--ap-surface);color:var(--ap-ink-2);border-radius:var(--ap-r-sm);padding:8px 12px;cursor:pointer;white-space:nowrap;font-weight:var(--ap-w-med);min-height:var(--ap-control-sm)}
+    .acker-align:hover{background:var(--ap-green-soft);color:var(--ap-green-dark);border-color:var(--ap-green-line)}
     /* Karten-Anzeigeschalter im Panel (statt schwebender Icons) */
-    .acker-mapctrls{display:flex;gap:6px;margin-top:8px}
-    .acker-mapctrls button{flex:1;height:34px;border:1px solid var(--border-1);background:var(--surface-1);color:var(--text-muted);border-radius:8px;cursor:pointer;font-size:15px;display:inline-flex;align-items:center;justify-content:center}
-    .acker-mapctrls button:hover{background:var(--surface-3);color:var(--text)}
-    .acker-mapctrls button.on{background:#dcfce7;color:#15803d;border-color:#86efac}
+    .acker-mapctrls{display:flex;gap:var(--ap-2)}
+    .acker-mapctrls button{flex:1;height:var(--ap-icon-btn);border:1px solid var(--ap-line);background:var(--ap-surface);color:var(--ap-ink-2);border-radius:var(--ap-r-sm);cursor:pointer;font-size:18px;display:inline-flex;align-items:center;justify-content:center;transition:background var(--ap-t),color var(--ap-t),border-color var(--ap-t)}
+    .acker-mapctrls button:hover{background:var(--ap-surface-3);color:var(--ap-ink)}
+    .acker-mapctrls button.on{background:var(--ap-green-soft);color:var(--ap-green-dark);border-color:var(--ap-green-line)}
     /* Info-Karte (Klick auf Fläche/Gewächshaus) – Overlay im Karten-Container */
-    .acker-info{position:absolute;top:12px;left:52px;z-index:1000;width:270px;max-width:calc(100% - 64px);background:#fff;border:1px solid #d3dce4;border-radius:13px;box-shadow:0 12px 32px rgba(15,23,42,.24);padding:12px 13px;font-size:13px;color:#152230}
-    .acker-info .ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
-    .acker-info .ai-title b{font-size:15px;font-weight:700;display:block;line-height:1.2}
-    .acker-info .ai-badge{font-size:11px;color:#0f766e;background:rgba(16,163,74,.1);border-radius:6px;padding:1px 7px;display:inline-block;margin-top:3px}
-    .acker-info .ai-x{border:0;background:transparent;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px;line-height:1}
-    .acker-info .ai-x:hover{color:#334155}
-    .acker-info .ai-row{display:flex;gap:9px;align-items:flex-start;margin:6px 0}
-    .acker-info .ai-dot{width:12px;height:12px;border-radius:50%;flex:none;margin-top:3px}
-    .acker-info .ai-crop{font-size:14.5px;font-weight:700;line-height:1.15}
-    .acker-info .ai-crop.muted{color:#64748b;font-weight:600;font-size:13.5px}
-    .acker-info .ai-sub{font-size:12px;color:#64748b;margin-top:1px}
-    .acker-info .ai-next{font-size:12px;color:#475569;margin:3px 0 2px}
-    .acker-info .ai-next b{color:#152230}
-    .acker-info .ai-metrics{display:flex;gap:12px;margin:8px 0;padding:7px 0;border-top:1px solid #eef2f6;border-bottom:1px solid #eef2f6;font-size:12px;color:#64748b}
-    .acker-info .ai-metrics b{color:#15803d;font-size:14px}
-    .acker-info .ai-tasks{font-size:12.5px;color:#64748b;margin:7px 0 0;display:flex;align-items:center;gap:6px}
-    .acker-info .ai-tasks.has{color:#b45309;font-weight:600}
-    .acker-info .ai-tasks i{font-size:14px}
-    .acker-info .ai-actions{display:flex;gap:7px;margin-top:10px}
-    .acker-info .ai-btn{flex:1;border:1px solid #d3dce4;background:#fff;color:#334155;border-radius:8px;padding:7px 8px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
-    .acker-info .ai-btn:hover{background:#eef2f6}
-    .acker-info .ai-btn.primary{background:#16a34a;border-color:#16a34a;color:#fff}
-    .acker-info .ai-btn.primary:hover{background:#15803d}
-    .acker-fbody{display:none;padding:0 10px 10px;border-top:1px solid var(--border-1)}
+    .acker-info{position:absolute;top:14px;left:54px;z-index:1000;width:300px;max-width:calc(100% - 68px);background:var(--ap-surface);border:1px solid var(--ap-line);border-radius:var(--ap-r-lg);box-shadow:var(--ap-shadow-lg);padding:var(--ap-4);font-size:var(--ap-fs-sm);color:var(--ap-ink)}
+    .acker-info .ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ap-2);margin-bottom:var(--ap-2)}
+    .acker-info .ai-title b{font-size:var(--ap-fs-md);font-weight:var(--ap-w-bold);display:block;line-height:1.2}
+    .acker-info .ai-badge{font-size:var(--ap-fs-xs);color:var(--ap-green-dark);background:var(--ap-green-soft);border-radius:var(--ap-r-pill);padding:2px 10px;display:inline-block;margin-top:4px;font-weight:var(--ap-w-med)}
+    .acker-info .ai-x{border:0;background:transparent;color:var(--ap-ink-3);cursor:pointer;font-size:18px;padding:2px;line-height:1;border-radius:var(--ap-r-sm)}
+    .acker-info .ai-x:hover{color:var(--ap-ink)}
+    .acker-info .ai-row{display:flex;gap:var(--ap-2);align-items:flex-start;margin:var(--ap-2) 0}
+    .acker-info .ai-dot{width:14px;height:14px;border-radius:50%;flex:none;margin-top:3px}
+    .acker-info .ai-crop{font-size:var(--ap-fs-md);font-weight:var(--ap-w-bold);line-height:1.15}
+    .acker-info .ai-crop.muted{color:var(--ap-ink-3);font-weight:var(--ap-w-med)}
+    .acker-info .ai-sub{font-size:var(--ap-fs-xs);color:var(--ap-ink-3);margin-top:2px}
+    .acker-info .ai-next{font-size:var(--ap-fs-sm);color:var(--ap-ink-2);margin:4px 0 2px}
+    .acker-info .ai-next b{color:var(--ap-ink)}
+    .acker-info .ai-metrics{display:flex;gap:var(--ap-4);margin:var(--ap-3) 0;padding:var(--ap-2) 0;border-top:1px solid var(--ap-line);border-bottom:1px solid var(--ap-line);font-size:var(--ap-fs-xs);color:var(--ap-ink-3)}
+    .acker-info .ai-metrics b{color:var(--ap-green-dark);font-size:var(--ap-fs-md)}
+    .acker-info .ai-tasks{font-size:var(--ap-fs-sm);color:var(--ap-ink-3);margin:var(--ap-2) 0 0;display:flex;align-items:center;gap:6px}
+    .acker-info .ai-tasks.has{color:var(--ap-warn);font-weight:var(--ap-w-med)}
+    .acker-info .ai-tasks i{font-size:16px}
+    .acker-info .ai-actions{display:flex;gap:var(--ap-2);margin-top:var(--ap-3)}
+    .acker-info .ai-btn{flex:1;border:1px solid var(--ap-line-2);background:var(--ap-surface);color:var(--ap-ink-2);border-radius:var(--ap-r-sm);padding:11px 10px;font-size:var(--ap-fs-sm);font-weight:var(--ap-w-med);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;min-height:var(--ap-control-sm)}
+    .acker-info .ai-btn:hover{background:var(--ap-surface-3);color:var(--ap-ink)}
+    .acker-info .ai-btn.primary{background:var(--ap-green);border-color:var(--ap-green);color:var(--ap-on-green);font-weight:var(--ap-w-bold)}
+    .acker-info .ai-btn.primary:hover{background:var(--ap-green-dark);border-color:var(--ap-green-dark)}
+    .acker-fbody{display:none;padding:0 var(--ap-3) var(--ap-3);border-top:1px solid var(--ap-line)}
     .acker-field.open .acker-fbody{display:block}
-    .acker-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-    .acker-fld{font-size:11px;color:var(--text-muted,#94a3b8);display:flex;flex-direction:column;gap:3px}
-    .acker-fld input,.acker-fld select{padding:6px 7px;border:1px solid var(--border-1);border-radius:7px;font-size:12.5px;width:100%;background:var(--surface-2,rgba(255,255,255,.04));color:var(--text)}
+    .acker-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--ap-3);margin-top:var(--ap-3)}
+    .acker-fld{font-size:var(--ap-fs-xs);color:var(--ap-ink-2);display:flex;flex-direction:column;gap:5px;font-weight:var(--ap-w-med)}
+    .acker-fld input:not([type=range]),.acker-fld select{padding:11px 12px;border:1px solid var(--ap-line-2);border-radius:var(--ap-r-sm);font-size:var(--ap-fs);width:100%;background:var(--ap-surface);color:var(--ap-ink);min-height:var(--ap-control-sm)}
+    .acker-fld input[type=range]{accent-color:var(--ap-green);width:100%}
     .acker-fld.span2{grid-column:1 / -1}
-    .acker-res{margin-top:10px;background:var(--surface-2,rgba(255,255,255,.04));border-radius:8px;padding:8px 10px}
-    .acker-res .r{display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0}
-    .acker-res .r b{color:#22c55e}
-    .acker-calib{margin-top:8px;font-size:11.5px;color:var(--text-muted);line-height:1.5}
-    .acker-calib i{color:#0891b2}
-    .acker-calib .calib-row{display:flex;gap:6px;margin-top:5px}
-    .acker-calib input{flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border-1);border-radius:7px;font-size:12.5px;background:var(--surface-2,rgba(255,255,255,.04));color:var(--text)}
+    .acker-res{margin-top:var(--ap-3);background:var(--ap-surface-2);border-radius:var(--ap-r-sm);padding:var(--ap-3)}
+    .acker-res .r{display:flex;justify-content:space-between;align-items:center;font-size:var(--ap-fs-sm);padding:3px 0;color:var(--ap-ink-2)}
+    .acker-res .r b{color:var(--ap-green-dark);font-weight:var(--ap-w-bold)}
+    .acker-calib{margin-top:var(--ap-3);font-size:var(--ap-fs-xs);color:var(--ap-ink-2);line-height:1.5}
+    .acker-calib i{color:var(--ap-info)}
+    .acker-calib .calib-row{display:flex;gap:var(--ap-2);margin-top:var(--ap-2)}
+    .acker-calib input{flex:1;min-width:0;padding:11px 12px;border:1px solid var(--ap-line-2);border-radius:var(--ap-r-sm);font-size:var(--ap-fs);background:var(--ap-surface);color:var(--ap-ink);min-height:var(--ap-control-sm)}
     .acker-calib button{white-space:nowrap}
-    .acker-actions{display:flex;justify-content:space-between;margin-top:10px;gap:8px}
-    .acker-vhandle{background:#fff;border:2px solid #15803d;border-radius:50%;width:12px!important;height:12px!important;margin-left:-6px!important;margin-top:-6px!important;cursor:grab}
+    .acker-vhandle{background:#fff;border:2px solid var(--ap-green-dark);border-radius:50%;width:14px!important;height:14px!important;margin-left:-7px!important;margin-top:-7px!important;cursor:grab}
     .acker-outline-grab{cursor:grab}
     .acker-draw-preview{animation:acker-ants .8s linear infinite}
     @keyframes acker-ants{to{stroke-dashoffset:-22}}
-    .acker-draw-stats{font-size:12.5px;font-weight:700;color:#15803d;margin-top:6px}
-    .acker-standort-dot{display:block;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
-    .acker-standort-label{background:rgba(255,255,255,.92);color:#1f2937;border:1px solid #d97706;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+    .acker-draw-stats{font-size:var(--ap-fs-sm);font-weight:var(--ap-w-bold);color:var(--ap-green-dark);margin-top:var(--ap-2)}
+    .acker-standort-dot{display:block;width:14px;height:14px;border-radius:50%;background:var(--ap-warn);border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+    .acker-standort-label{background:rgba(255,255,255,.94);color:var(--ap-ink);border:1px solid var(--ap-warn);border-radius:var(--ap-r-sm);padding:2px 7px;font-size:var(--ap-fs-xs);font-weight:var(--ap-w-med);box-shadow:0 1px 3px rgba(0,0,0,.25)}
     .acker-standort-label::before{display:none}
     /* Flächen-Beschriftung (Zentroid) */
     .acker-flabel-wrap{pointer-events:none!important}
-    .acker-flabel{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:0;white-space:nowrap;padding:3px 9px;border-radius:9px;background:rgba(255,255,255,.93);border:1.5px solid var(--fc,#3b82f6);box-shadow:0 1px 5px rgba(0,0,0,.28);line-height:1.15}
-    .acker-flabel b{font-weight:700;font-size:12px;color:#1f2937}
-    .acker-flabel i{font-style:normal;color:#15803d;font-weight:600;font-size:10.5px}
-    .acker-flabel .cr{font-style:normal;font-weight:700;font-size:10px;color:#fff;background:var(--cc,#16a34a);border-radius:5px;padding:1px 6px;margin:1px 0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .acker-flabel{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:0;white-space:nowrap;padding:4px 10px;border-radius:var(--ap-r-sm);background:rgba(255,255,255,.94);border:2px solid var(--fc,#3b82f6);box-shadow:0 2px 8px rgba(0,0,0,.22);line-height:1.15}
+    .acker-flabel b{font-weight:var(--ap-w-bold);font-size:var(--ap-fs-xs);color:var(--ap-ink)}
+    .acker-flabel i{font-style:normal;color:var(--ap-green-dark);font-weight:var(--ap-w-med);font-size:11px}
+    .acker-flabel .cr{font-style:normal;font-weight:var(--ap-w-bold);font-size:10px;color:#fff;background:var(--cc,#16a34a);border-radius:5px;padding:1px 6px;margin:1px 0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .acker-flabel .cr .dot{display:none}
-    .acker-flabel.sel{box-shadow:0 2px 9px rgba(0,0,0,.34);transform:translate(-50%,-50%) scale(1.05)}
+    .acker-flabel.sel{box-shadow:0 3px 12px rgba(0,0,0,.3);transform:translate(-50%,-50%) scale(1.05)}
     /* Floating-Toolbar */
-    .acker-toolbar a{display:flex!important;align-items:center;justify-content:center;font-size:15px;color:#334155;background:#fff;width:30px;height:30px;line-height:30px}
-    .acker-toolbar a.on{color:#15803d;background:#dcfce7}
-    .acker-toolbar a:hover{background:#eef2f6}
-    .acker-toolbar a.on:hover{background:#bbf7d0}
+    .acker-toolbar a{display:flex!important;align-items:center;justify-content:center;font-size:17px;color:var(--ap-ink-2);background:#fff;width:34px;height:34px;line-height:34px}
+    .acker-toolbar a.on{color:var(--ap-green-dark);background:var(--ap-green-soft)}
+    .acker-toolbar a:hover{background:var(--ap-surface-3)}
+    .acker-toolbar a.on:hover{background:var(--ap-green-line)}
     /* Panel-Aktionen */
-    .acker-actions{display:flex;align-items:center;gap:6px;margin-top:10px}
-    .acker-colorbtn{position:relative;width:30px;height:30px;border-radius:7px;border:1px solid var(--border-1);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex:none}
+    .acker-actions{display:flex;align-items:center;gap:var(--ap-2);margin-top:var(--ap-3)}
+    .acker-colorbtn{position:relative;width:var(--ap-icon-btn);height:var(--ap-icon-btn);border-radius:var(--ap-r-sm);border:1px solid var(--ap-line-2);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex:none;background:var(--ap-surface)}
+    .acker-colorbtn:hover{background:var(--ap-surface-3)}
     .acker-colorbtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
-    .acker-colorbtn i{font-size:14px;color:var(--text-muted);pointer-events:none}
-    .acker-abtn{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-1);border-radius:7px;background:var(--surface-1);color:var(--text-muted);padding:0;font-size:14px;flex:none}
-    .acker-abtn:hover{background:var(--surface-3);color:var(--text)}
-    .acker-abtn.danger{color:#dc2626;border-color:rgba(220,38,38,.3)}
-    .acker-abtn.danger:hover{background:var(--danger-subtle,rgba(220,38,38,.12))}
-    .acker-hint{margin-top:8px;font-size:10.5px;color:var(--text-dim);display:flex;align-items:center;gap:5px}
+    .acker-colorbtn i{font-size:17px;color:var(--ap-ink-2);pointer-events:none}
+    .acker-abtn{width:var(--ap-icon-btn);height:var(--ap-icon-btn);display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ap-line-2);border-radius:var(--ap-r-sm);background:var(--ap-surface);color:var(--ap-ink-2);padding:0;font-size:17px;flex:none;cursor:pointer;transition:background var(--ap-t),color var(--ap-t)}
+    .acker-abtn:hover{background:var(--ap-surface-3);color:var(--ap-ink)}
+    .acker-abtn.danger{color:var(--ap-danger);border-color:var(--ap-danger-line)}
+    .acker-abtn.danger:hover{background:var(--ap-danger-soft)}
+    .acker-hint{margin-top:var(--ap-2);font-size:var(--ap-fs-xs);color:var(--ap-ink-3);display:flex;align-items:center;gap:5px;line-height:1.45}
     /* Rechtsklick-Kontextmenü */
-    .acker-ctx{position:fixed;z-index:12000;min-width:236px;max-width:300px;background:var(--surface-1,#fff);border:1px solid var(--border-1,#d3dce4);border-radius:11px;box-shadow:0 12px 34px rgba(15,23,42,.22);padding:5px;font-size:13px;color:var(--text,#152230);user-select:none}
-    .acker-ctx-title{font-size:11px;font-weight:700;color:var(--text-dim,#687889);padding:5px 9px 7px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .acker-ctx-sep{height:1px;background:var(--border-1,#d3dce4);margin:4px 2px}
-    .acker-ctx-item{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:7px 9px;border-radius:7px;cursor:pointer;position:relative;font-size:13px;line-height:1.2}
-    .acker-ctx-item:hover{background:var(--surface-3,#e4ebf1)}
-    .acker-ctx-item .ic{width:18px;text-align:center;color:var(--text-muted,#45566a);flex:none}
+    .acker-ctx{position:fixed;z-index:12000;min-width:248px;max-width:320px;background:var(--ap-surface);border:1px solid var(--ap-line);border-radius:var(--ap-r-lg);box-shadow:var(--ap-shadow-lg);padding:var(--ap-2);font-size:var(--ap-fs-sm);color:var(--ap-ink);user-select:none}
+    .acker-ctx-title{font-size:var(--ap-fs-xs);font-weight:var(--ap-w-bold);color:var(--ap-ink-3);padding:7px 10px 9px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .acker-ctx-sep{height:1px;background:var(--ap-line);margin:var(--ap-1) var(--ap-1)}
+    .acker-ctx-item{display:flex;align-items:center;gap:var(--ap-2);width:100%;border:0;background:transparent;color:inherit;text-align:left;padding:11px 10px;border-radius:var(--ap-r-sm);cursor:pointer;position:relative;font-size:var(--ap-fs-sm);line-height:1.2}
+    .acker-ctx-item:hover{background:var(--ap-surface-3)}
+    .acker-ctx-item .ic{width:20px;text-align:center;color:var(--ap-ink-2);flex:none;font-size:16px}
     .acker-ctx-item .lb{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .acker-ctx-item .ch{color:var(--text-dim);margin-left:auto;font-size:11px}
-    .acker-ctx-item.danger{color:#dc2626}
-    .acker-ctx-item.danger .ic{color:#dc2626}
-    .acker-ctx-item.disabled{opacity:.38;cursor:default}
+    .acker-ctx-item .ch{color:var(--ap-ink-3);margin-left:auto;font-size:12px}
+    .acker-ctx-item.danger{color:var(--ap-danger)}
+    .acker-ctx-item.danger .ic{color:var(--ap-danger)}
+    .acker-ctx-item.disabled{opacity:.4;cursor:default}
     .acker-ctx-item.disabled:hover{background:transparent}
-    .acker-ctx-sub{display:none;position:absolute;left:calc(100% + 3px);top:-5px;min-width:200px;max-height:62vh;overflow-y:auto;overflow-x:hidden;background:var(--surface-1,#fff);border:1px solid var(--border-1);border-radius:11px;box-shadow:0 12px 34px rgba(15,23,42,.22);padding:5px}
+    .acker-ctx-sub{display:none;position:absolute;left:calc(100% + 3px);top:-5px;min-width:210px;max-height:62vh;overflow-y:auto;overflow-x:hidden;background:var(--ap-surface);border:1px solid var(--ap-line);border-radius:var(--ap-r-lg);box-shadow:var(--ap-shadow-lg);padding:var(--ap-2)}
     .acker-ctx-item.has-sub:hover>.acker-ctx-sub,.acker-ctx-sub:hover{display:block}
-    .acker-ctx-swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:7px 9px}
-    .acker-sw{width:26px;height:26px;border-radius:7px;border:2px solid rgba(0,0,0,.12);cursor:pointer;padding:0}
-    .acker-sw.on{box-shadow:0 0 0 2px var(--text)}
-    .acker-sw-custom{grid-column:1 / -1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px dashed var(--border-2,#b3c1ce);border-radius:7px;padding:5px;cursor:pointer;font-size:12px;color:var(--text-muted)}
-    .acker-sw-custom input{width:24px;height:24px;border:0;background:none;padding:0;cursor:pointer}
+    .acker-ctx-swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--ap-2);padding:7px 10px}
+    .acker-sw{width:30px;height:30px;border-radius:var(--ap-r-sm);border:2px solid rgba(0,0,0,.12);cursor:pointer;padding:0}
+    .acker-sw.on{box-shadow:0 0 0 2px var(--ap-ink)}
+    .acker-sw-custom{grid-column:1 / -1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px dashed var(--ap-line-2);border-radius:var(--ap-r-sm);padding:7px;cursor:pointer;font-size:var(--ap-fs-xs);color:var(--ap-ink-2)}
+    .acker-sw-custom input{width:26px;height:26px;border:0;background:none;padding:0;cursor:pointer}
     @media(max-width:760px){.acker-wrap{flex-direction:column;height:auto}.acker-side{width:100%;max-height:46vh}.acker-map{height:52vh}}
   </style>
   <section class="calc-section">
@@ -1374,22 +1376,22 @@ function renderShell(): string {
               <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-cancel">Abbrechen</button>
             </div>
           </div>
-          <div class="acker-totals" data-role="acker-totals" style="display:none;margin-top:12px">
+          <div class="acker-totals" data-role="acker-totals" style="display:none">
             <div class="t-row"><span>Gesamtfläche</span><b data-t="area">–</b></div>
             <div class="t-row"><span>Beete gesamt</span><b data-t="beds">–</b></div>
             <div class="t-row"><span>Beetmeter gesamt</span><b data-t="meters">–</b></div>
-            <div class="t-row" style="margin-top:4px"><span>Pflanzen gesamt</span><b class="big" data-t="plants">–</b></div>
+            <div class="t-row"><span>Pflanzen gesamt</span><b class="big" data-t="plants">–</b></div>
             <div class="acker-legend">
               <span class="lg"><i class="bed"></i>Beet</span>
               <span class="lg"><i class="path"></i>Weg</span>
               <span class="lg-hint">beim Reinzoomen sichtbar</span>
             </div>
           </div>
-          <div class="acker-export-box" style="margin:12px 0">
+          <div class="acker-export-box">
             <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-export" style="width:100%">
               <i class="bi bi-geo me-1"></i>Als GeoJSON exportieren
             </button>
-            <div style="font-size:11px;color:var(--text-dim);margin-top:5px;line-height:1.35">Flächen + Standorte (WGS84) für QGIS / FMIS / Traktor-Terminals.</div>
+            <div style="font-size:var(--ap-fs-xs);color:var(--ap-ink-3);margin-top:6px;line-height:1.4">Flächen + Standorte (WGS84) für QGIS / FMIS / Traktor-Terminals.</div>
           </div>
           <div data-role="acker-list"></div>
           <div class="acker-empty" data-role="acker-empty">Noch keine Fläche.<br>Zum Acker navigieren, dann <b>Neue Fläche zeichnen</b>.</div>

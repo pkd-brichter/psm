@@ -1,0 +1,227 @@
+/**
+ * ACKER-PLANER — Design-System "Freundlich & groß" (Feld/Tablet)
+ * ════════════════════════════════════════════════════════════════════════════
+ * Gemeinsame Designsprache für die zwei Reiter des Acker-Planers:
+ *   • Karte         → [data-feature="acker"]
+ *   • Kulturführung → [data-feature="kultur"]
+ *
+ * Richtung (vom Nutzer gewählt): kräftiges Grün + viel Weiß, stark gerundete
+ * Karten, große fingerfreundliche Knöpfe, große fette Typo, hoher Kontrast.
+ * Ideal fürs Tablet im Feld.
+ *
+ * WICHTIG:
+ *  - Die --ap-* Tokens stehen auf :root, NICHT gescopt. Grund: schwebende
+ *    Elemente (Kontextmenü, Dialoge) werden teils an <body> gehängt – außerhalb
+ *    des Feature-Containers. Auf :root lösen sie var(--ap-*) trotzdem auf.
+ *    Andere App-Bereiche referenzieren --ap-* nicht → kein Einfluss auf den Rest.
+ *  - Die Basis-Politur (Schriftgröße, Scrollbar, Fokus) ist hingegen gescopt,
+ *    damit nur Karte + Kulturführung sie bekommen.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+:root {
+  /* ── Grün (kräftig) ──────────────────────────────────────────────────── */
+  --ap-green: #15803d; /* Primär – Hauptaktionen, aktive Zustände */
+  --ap-green-bright: #16a34a; /* Etwas heller – Fills, Akzente */
+  --ap-green-dark: #166534; /* Hover/aktiv – dunkler */
+  --ap-green-darker: #14532d; /* Pressed */
+  --ap-green-soft: #dcfce7; /* Weicher Fond (Chips, aktive Tabs) */
+  --ap-green-tint: #f0fdf4; /* Sehr heller Fond (Hero, Hinweise) */
+  --ap-green-line: #bbf7d0; /* Weicher grüner Rahmen */
+  --ap-on-green: #ffffff; /* Text auf Grün */
+
+  /* ── Tinte / Text (hoher Kontrast) ───────────────────────────────────── */
+  --ap-ink: #0f1f17; /* Primärtext – fast schwarz, leicht grünstichig */
+  --ap-ink-2: #3f514a; /* Sekundärtext */
+  --ap-ink-3: #6b7c73; /* Tertiär – Labels, Hints */
+
+  /* ── Flächen (viel Weiß) ─────────────────────────────────────────────── */
+  --ap-surface: #ffffff; /* Karten, Panels */
+  --ap-surface-2: #f4f7f4; /* Weicher Fond, Inputs */
+  --ap-surface-3: #eaf1ea; /* Hover, aktive Zeilen */
+
+  /* ── Rahmen ──────────────────────────────────────────────────────────── */
+  --ap-line: #e3eae4; /* Standard-Rahmen */
+  --ap-line-2: #cad6cd; /* Stärkerer Rahmen / Fokus-Rand */
+
+  /* ── Semantisch ──────────────────────────────────────────────────────── */
+  --ap-danger: #dc2626;
+  --ap-danger-dark: #b91c1c;
+  --ap-danger-soft: #fef2f2;
+  --ap-danger-line: #fecaca;
+  --ap-warn: #b45309;
+  --ap-warn-soft: #fffbeb;
+  --ap-warn-line: #fde68a;
+  --ap-info: #0e7490;
+  --ap-info-bright: #0891b2;
+
+  /* ── Radius (stark gerundet) ─────────────────────────────────────────── */
+  --ap-r-sm: 12px; /* Inputs, kleine Chips */
+  --ap-r: 16px; /* Knöpfe, Listenzeilen */
+  --ap-r-lg: 22px; /* Karten, Panels */
+  --ap-r-xl: 28px; /* Große Hero-Karten */
+  --ap-r-pill: 999px;
+
+  /* ── Abstände (großzügig, 4er-Basis) ─────────────────────────────────── */
+  --ap-1: 4px;
+  --ap-2: 8px;
+  --ap-3: 12px;
+  --ap-4: 16px;
+  --ap-5: 20px;
+  --ap-6: 24px;
+  --ap-7: 28px;
+  --ap-8: 32px;
+
+  /* ── Touch-Targets (groß, fingerfreundlich) ──────────────────────────── */
+  --ap-control: 52px; /* Primäre Knöpfe / Inputs */
+  --ap-control-sm: 44px; /* Kompakte Knöpfe (min. Touch) */
+  --ap-icon-btn: 44px; /* Quadratische Icon-Knöpfe */
+
+  /* ── Typo (groß, fett, hoher Kontrast) ───────────────────────────────── */
+  --ap-fs-xs: 13px; /* Mikro-Labels */
+  --ap-fs-sm: 14px; /* Sekundär */
+  --ap-fs: 16px; /* Basis */
+  --ap-fs-md: 18px; /* Betont */
+  --ap-fs-lg: 22px; /* Abschnitts-Titel */
+  --ap-fs-xl: 28px; /* Große Werte / Hero */
+  --ap-fs-2xl: 34px; /* Kennzahl-Hervorhebung */
+  --ap-w-med: 600;
+  --ap-w-bold: 700;
+  --ap-w-black: 800;
+
+  /* ── Schatten (weich, freundlich) ────────────────────────────────────── */
+  --ap-shadow-sm: 0 1px 2px rgba(16, 42, 26, 0.05),
+    0 2px 6px rgba(16, 42, 26, 0.05);
+  --ap-shadow: 0 2px 8px rgba(16, 42, 26, 0.06), 0 12px 28px rgba(16, 42, 26, 0.07);
+  --ap-shadow-lg: 0 18px 44px rgba(16, 42, 26, 0.16);
+
+  /* ── Fokus-Ring (klar, barrierearm) ──────────────────────────────────── */
+  --ap-focus: 0 0 0 4px rgba(21, 128, 61, 0.22);
+
+  /* ── Overlay ─────────────────────────────────────────────────────────── */
+  --ap-overlay: rgba(15, 35, 24, 0.46);
+
+  /* ── Transition ──────────────────────────────────────────────────────── */
+  --ap-t: 0.16s ease;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   BASIS-POLITUR — nur Karte + Kulturführung
+   ════════════════════════════════════════════════════════════════════════════ */
+
+[data-feature="acker"],
+[data-feature="kultur"] {
+  font-size: var(--ap-fs);
+  color: var(--ap-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Klarer, einheitlicher Tastatur-Fokus auf allen Bedienelementen im Bereich.
+   (Maus-Klicks zeigen keinen Ring – nur Tastatur via :focus-visible.) */
+[data-feature="acker"] button:focus-visible,
+[data-feature="acker"] input:focus-visible,
+[data-feature="acker"] select:focus-visible,
+[data-feature="acker"] textarea:focus-visible,
+[data-feature="acker"] [tabindex]:focus-visible,
+[data-feature="kultur"] button:focus-visible,
+[data-feature="kultur"] input:focus-visible,
+[data-feature="kultur"] select:focus-visible,
+[data-feature="kultur"] textarea:focus-visible,
+[data-feature="kultur"] [tabindex]:focus-visible {
+  outline: none;
+  box-shadow: var(--ap-focus);
+  border-color: var(--ap-green) !important;
+}
+
+/* Knöpfe geben beim Drücken ein leichtes haptisches Feedback. */
+[data-feature="acker"] button:active,
+[data-feature="kultur"] button:active {
+  transform: translateY(0.5px);
+}
+
+/* Dezente, moderne Scrollbalken in den Panels. */
+[data-feature="acker"] *::-webkit-scrollbar,
+[data-feature="kultur"] *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-feature="acker"] *::-webkit-scrollbar-thumb,
+[data-feature="kultur"] *::-webkit-scrollbar-thumb {
+  background: var(--ap-line-2);
+  border-radius: var(--ap-r-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+[data-feature="acker"] *::-webkit-scrollbar-thumb:hover,
+[data-feature="kultur"] *::-webkit-scrollbar-thumb:hover {
+  background: var(--ap-ink-3);
+  background-clip: padding-box;
+}
+[data-feature="acker"] *::-webkit-scrollbar-track,
+[data-feature="kultur"] *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Schwebende Elemente (Kontextmenü/Dialoge) erben die Bereichs-Schrift nicht,
+   weil sie an <body> hängen – daher hier explizit die Grund-Typo sichern. */
+.acker-ctx,
+.acker-info,
+.km-ctx,
+.kmodal-ov {
+  font-size: var(--ap-fs-sm);
+  color: var(--ap-ink);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   KNÖPFE — die bestehenden PSM-/Bootstrap-Knöpfe im Bereich auf "groß &
+   freundlich" umskinnen, ohne Markup zu ändern.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+[data-feature="acker"] .btn-psm-primary,
+[data-feature="kultur"] .btn-psm-primary {
+  background: var(--ap-green);
+  border-color: var(--ap-green);
+  color: var(--ap-on-green);
+  font-weight: var(--ap-w-bold);
+  border-radius: var(--ap-r);
+  min-height: var(--ap-control-sm);
+  padding: 10px 18px;
+  font-size: var(--ap-fs-sm);
+  transition: background var(--ap-t), border-color var(--ap-t);
+}
+[data-feature="acker"] .btn-psm-primary:hover,
+[data-feature="acker"] .btn-psm-primary:focus,
+[data-feature="kultur"] .btn-psm-primary:hover,
+[data-feature="kultur"] .btn-psm-primary:focus {
+  background: var(--ap-green-dark);
+  border-color: var(--ap-green-dark);
+  color: var(--ap-on-green);
+}
+
+[data-feature="acker"] .btn-psm-secondary-outline,
+[data-feature="kultur"] .btn-psm-secondary-outline {
+  background: var(--ap-surface);
+  border: 1px solid var(--ap-line-2);
+  color: var(--ap-ink-2);
+  border-radius: var(--ap-r);
+  min-height: var(--ap-control-sm);
+  padding: 10px 16px;
+  font-weight: var(--ap-w-med);
+  font-size: var(--ap-fs-sm);
+  transition: background var(--ap-t), border-color var(--ap-t);
+}
+[data-feature="acker"] .btn-psm-secondary-outline:hover,
+[data-feature="acker"] .btn-psm-secondary-outline:focus,
+[data-feature="kultur"] .btn-psm-secondary-outline:hover,
+[data-feature="kultur"] .btn-psm-secondary-outline:focus {
+  background: var(--ap-surface-3);
+  border-color: var(--ap-line-2);
+  color: var(--ap-ink);
+}
+
+/* Kompakt-Variante (btn-sm) behält die großzügige Touch-Höhe. */
+[data-feature="acker"] .btn-sm,
+[data-feature="kultur"] .btn-sm {
+  min-height: var(--ap-control-sm);
+}
