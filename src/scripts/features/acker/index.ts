@@ -317,10 +317,11 @@ export function initAcker(container: Element | null, services: Services): void {
       fl.bedsLayer.addTo(map);
     }
 
-    fl.outline = L.polygon(fl.latlngs, { ...styleOutline(fl, sel, detail), bubblingMouseEvents: false }).addTo(map);
+    fl.outline = L.polygon(fl.latlngs, { ...styleOutline(fl, sel, detail), className: sel ? "acker-outline-grab" : "", bubblingMouseEvents: false }).addTo(map);
     fl.outline.on("click", () => select(fl._key));
     fl.outline.on("dblclick", () => zoomToField(fl));
     fl.outline.on("contextmenu", (e: any) => openFieldMenu(fl, e));
+    fl.outline.on("mousedown", (e: any) => onFieldMouseDown(fl, e));
 
     renderLabel(fl, sel);
     if (sel || wasEditing) buildHandles(fl);
@@ -716,7 +717,7 @@ export function initAcker(container: Element | null, services: Services): void {
             <span style="flex:1"></span>
             <button class="btn btn-sm acker-abtn danger" data-act="del" title="Löschen"><i class="bi bi-trash"></i></button>
           </div>
-          <div class="acker-hint"><i class="bi bi-mouse2"></i> Rechtsklick auf die Fläche für mehr Aktionen</div>
+          <div class="acker-hint"><i class="bi bi-arrows-move"></i> Ausgewählte Fläche ziehen = verschieben · Rechtsklick = mehr Aktionen</div>
         </div>`;
       d.querySelector(".acker-fhead")!.addEventListener("click", (ev: any) => {
         if (ev.target.classList.contains("acker-name")) return;
@@ -766,6 +767,64 @@ export function initAcker(container: Element | null, services: Services): void {
     }
   }
 
+  // ---------- Ganze Fläche verschieben (Polygon ziehen) ----------
+  // Ausgewählte Fläche: auf der Füllung greifen und ziehen verschiebt das ganze
+  // Polygon (ideal zum Vergleichen duplizierter Flächen). Beete werden während
+  // des Ziehens ausgeblendet und am Ende einmalig neu berechnet (flüssig).
+  let moveState: any = null;
+  function onFieldMouseDown(fl: any, e: any) {
+    if (drawing || fl._key !== selId) return; // nicht ausgewählt → Klick wählt nur aus
+    moveState = { fl, lastLL: e.latlng, moved: false };
+    map.dragging.disable();
+    map.getContainer().style.cursor = "grabbing";
+    L.DomEvent.stop(e);
+  }
+  function onFieldMouseMove(e: any) {
+    if (!moveState) return;
+    const fl = moveState.fl;
+    if (!moveState.moved) {
+      // erster echter Move: Beete ausblenden + „bewegt"-Stil (flüssiges Ziehen)
+      if (fl.bedsLayer) { map.removeLayer(fl.bedsLayer); fl.bedsLayer = null; }
+      try { fl.outline.setStyle({ fillOpacity: 0.3, dashArray: "6 5" }); } catch {}
+    }
+    const dLat = e.latlng.lat - moveState.lastLL.lat;
+    const dLng = e.latlng.lng - moveState.lastLL.lng;
+    moveState.lastLL = e.latlng;
+    moveState.moved = true;
+    fl.latlngs = fl.latlngs.map((p: any) => [p[0] + dLat, p[1] + dLng]);
+    try { fl.outline.setLatLngs(fl.latlngs); } catch {}
+    (fl.handles || []).forEach((m: any, i: number) => { try { m.setLatLng(fl.latlngs[i]); } catch {} });
+    if (fl.label) { try { fl.label.setLatLng(fl.outline.getBounds().getCenter()); } catch {} }
+  }
+  function onFieldMouseUp() {
+    if (!moveState) return;
+    const fl = moveState.fl, moved = moveState.moved;
+    moveState = null;
+    map.dragging.enable();
+    map.getContainer().style.cursor = "";
+    if (moved) recompute(fl); // Beete + Stil neu berechnen & speichern
+  }
+
+  // ---------- Zeichen-Helfer: Schnapp am ersten Punkt + Live-Fläche ----------
+  function isNearFirst(latlng: any): boolean {
+    if (pts.length < 3) return false;
+    const p0 = map.latLngToContainerPoint(L.latLng(pts[0][0], pts[0][1]));
+    const pc = map.latLngToContainerPoint(latlng);
+    return p0.distanceTo(pc) <= 14;
+  }
+  function ringAreaM2(ring: any[]): number {
+    if (!turf || ring.length < 3) return 0;
+    try {
+      const c = ring.map((p: any) => [p[1], p[0]]); c.push(c[0]);
+      return turf.area(turf.polygon([c]));
+    } catch { return 0; }
+  }
+  function updateDrawStats(ring: any[]) {
+    const elS = el('[data-role="acker-draw-stats"]'); if (!elS) return;
+    const a = ringAreaM2(ring);
+    elS.textContent = `${pts.length} Punkt${pts.length === 1 ? "" : "e"}` + (a > 0 ? ` · ~${nf(a)} m²` : "");
+  }
+
   // ---------- Zeichnen ----------
   let drawing = false; let pts: any[] = []; let preview: any = null; let dots: any[] = [];
   let keySeq = 0;
@@ -789,7 +848,7 @@ export function initAcker(container: Element | null, services: Services): void {
     if (ring.length < 2) { if (preview) { map.removeLayer(preview); preview = null; } return; }
     if (!preview) {
       preview = L.polygon(ring, {
-        interactive: false, color: "#22c55e", weight: 2.5,
+        interactive: false, className: "acker-draw-preview", color: "#22c55e", weight: 2.5,
         fillColor: "#22c55e", fillOpacity: 0.18, dashArray: "6 5",
       }).addTo(map);
     } else preview.setLatLngs(ring);
@@ -809,24 +868,26 @@ export function initAcker(container: Element | null, services: Services): void {
   }
   function onMapClick(e: any) {
     if (!drawing) return;
-    // Klick nahe dem ersten Punkt schließt das Polygon (Standard-UX).
-    if (pts.length >= 3) {
-      const p0 = map.latLngToContainerPoint(L.latLng(pts[0][0], pts[0][1]));
-      const pc = map.latLngToContainerPoint(e.latlng);
-      if (p0.distanceTo(pc) <= 14) { finishDraw(); return; }
-    }
+    // Klick nahe dem ersten Punkt schließt das Polygon (Schnapp-UX).
+    if (isNearFirst(e.latlng)) { finishDraw(); return; }
     pts.push([e.latlng.lat, e.latlng.lng]);
     addDot(e.latlng, pts.length === 1);
     drawPreview();
+    updateDrawStats(pts);
   }
   function onMapMove(e: any) {
     if (!drawing || !pts.length) return;
-    drawPreview(e.latlng);
+    const near = isNearFirst(e.latlng);
+    // Nahe am Start: Vorschau geschlossen zeigen + ersten Punkt „aufleuchten".
+    drawPreview(near ? undefined : e.latlng);
+    if (dots[0]) { try { dots[0].setRadius(near ? 10 : 7); dots[0].setStyle({ weight: near ? 3 : 2 }); } catch {} }
+    updateDrawStats(near ? pts : [...pts, [e.latlng.lat, e.latlng.lng]]);
   }
   function undoLastPoint() {
     if (!pts.length) return;
     pts.pop(); const d = dots.pop(); if (d) map.removeLayer(d);
     drawPreview();
+    updateDrawStats(pts);
   }
   function finishDraw() {
     if (pts.length < 3) { toast.warning("Mindestens 3 Punkte setzen."); return; }
@@ -919,6 +980,10 @@ export function initAcker(container: Element | null, services: Services): void {
       if (drawing) { L.DomEvent.preventDefault?.(e.originalEvent || e); undoLastPoint(); return; }
       openMapMenu(e);
     });
+    // Ganze Fläche verschieben (ausgewählte Fläche auf der Karte ziehen)
+    map.on("mousemove", onFieldMouseMove);
+    map.on("mouseup", onFieldMouseUp);
+    document.addEventListener("mouseup", onFieldMouseUp);
     // LOD: bei Zoomwechsel nur betroffene Flächen neu zeichnen (Übersicht ↔ Detail)
     map.on("zoomend", lodRedraw);
 
@@ -1012,6 +1077,10 @@ function renderShell(): string {
     .acker-res .r b{color:#22c55e}
     .acker-actions{display:flex;justify-content:space-between;margin-top:10px;gap:8px}
     .acker-vhandle{background:#fff;border:2px solid #15803d;border-radius:50%;width:12px!important;height:12px!important;margin-left:-6px!important;margin-top:-6px!important;cursor:grab}
+    .acker-outline-grab{cursor:grab}
+    .acker-draw-preview{animation:acker-ants .8s linear infinite}
+    @keyframes acker-ants{to{stroke-dashoffset:-22}}
+    .acker-draw-stats{font-size:12.5px;font-weight:700;color:#15803d;margin-top:6px}
     .acker-standort-dot{display:block;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
     .acker-standort-label{background:rgba(255,255,255,.92);color:#1f2937;border:1px solid #d97706;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.25)}
     .acker-standort-label::before{display:none}
@@ -1070,6 +1139,7 @@ function renderShell(): string {
           <div class="acker-banner" data-role="acker-banner">
             <b>Ecke für Ecke anklicken</b> – die Vorschau folgt dem Cursor. Zum Abschließen den <b>ersten Punkt</b> anklicken (oder <b>Enter</b>).<br>
             <span style="opacity:.8">Rechtsklick oder <b>Backspace</b> = letzten Punkt zurück · <b>Esc</b> = abbrechen.</span>
+            <div class="acker-draw-stats" data-role="acker-draw-stats">0 Punkte</div>
             <div class="row">
               <button class="btn btn-sm btn-psm-primary" data-role="acker-finish">✓ Fertig</button>
               <button class="btn btn-sm btn-psm-secondary-outline" data-role="acker-cancel">Abbrechen</button>
