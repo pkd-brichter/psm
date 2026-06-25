@@ -4198,6 +4198,7 @@ async function exportMobileUnshared() {
     archives: { logs: [] },
   };
 
+  // --- Meta (immer exportieren: Firmeninfos für Import-Protokoll) ---------
   db.exec({
     sql: "SELECT key, value FROM meta",
     callback: (row) => {
@@ -4226,47 +4227,7 @@ async function exportMobileUnshared() {
     },
   });
 
-  db.exec({
-    sql: "SELECT id, name, unit, method_id, value, zulassungsnummer, wartezeit, wirkstoff FROM mediums",
-    callback: (row) => {
-      snapshot.mediums.push({
-        id: row[0], name: row[1], unit: row[2], methodId: row[3], value: row[4],
-        zulassungsnummer: row[5] || null, wartezeit: row[6] || null, wirkstoff: row[7] || null,
-      });
-    },
-  });
-
-  const profileMap = new Map();
-  db.exec({
-    sql: `SELECT id, name, created_at, updated_at FROM medium_profiles ORDER BY name COLLATE NOCASE`,
-    rowMode: "object",
-    callback: (row) => {
-      profileMap.set(row.id, {
-        id: String(row.id), name: String(row.name ?? ""),
-        createdAt: row.created_at || new Date().toISOString(),
-        updatedAt: row.updated_at || new Date().toISOString(),
-        mediumIds: [],
-      });
-    },
-  });
-  if (profileMap.size) {
-    db.exec({
-      sql: `SELECT profile_id, medium_id, sort_order FROM medium_profile_mediums ORDER BY profile_id, sort_order, rowid`,
-      rowMode: "object",
-      callback: (row) => {
-        const profile = profileMap.get(row.profile_id);
-        if (profile) profile.mediumIds.push(String(row.medium_id));
-      },
-    });
-  }
-  snapshot.mediumProfiles = Array.from(profileMap.values());
-
-  const archiveLogsFromTable = readAllArchiveLogs();
-  if (archiveLogsFromTable.length) {
-    snapshot.archives = { logs: archiveLogsFromTable.map((e) => toArchiveLogMetaPayload(e)) };
-  }
-
-  // Only entries that have NOT been shared yet from this device.
+  // --- History (nur noch nicht geteilte Einträge) -------------------------
   const historyMap = new Map();
   db.exec({
     sql: `SELECT id, created_at, header_json, client_uuid,
@@ -4349,6 +4310,52 @@ async function exportMobileUnshared() {
   });
 
   snapshot.history = Array.from(historyMap.values()).map((e) => ({ ...e.header, items: e.items }));
+
+  // --- Mediums + Profile nur wenn History-Einträge vorhanden --------------
+  // Bei reinem Foto-Share enthält die JSON sonst den Mittel-Katalog, was wie
+  // PSM-Einträge aussieht obwohl keine erstellt wurden.
+  if (historyMap.size > 0) {
+    db.exec({
+      sql: "SELECT id, name, unit, method_id, value, zulassungsnummer, wartezeit, wirkstoff FROM mediums",
+      callback: (row) => {
+        snapshot.mediums.push({
+          id: row[0], name: row[1], unit: row[2], methodId: row[3], value: row[4],
+          zulassungsnummer: row[5] || null, wartezeit: row[6] || null, wirkstoff: row[7] || null,
+        });
+      },
+    });
+
+    const profileMap = new Map();
+    db.exec({
+      sql: `SELECT id, name, created_at, updated_at FROM medium_profiles ORDER BY name COLLATE NOCASE`,
+      rowMode: "object",
+      callback: (row) => {
+        profileMap.set(row.id, {
+          id: String(row.id), name: String(row.name ?? ""),
+          createdAt: row.created_at || new Date().toISOString(),
+          updatedAt: row.updated_at || new Date().toISOString(),
+          mediumIds: [],
+        });
+      },
+    });
+    if (profileMap.size) {
+      db.exec({
+        sql: `SELECT profile_id, medium_id, sort_order FROM medium_profile_mediums ORDER BY profile_id, sort_order, rowid`,
+        rowMode: "object",
+        callback: (row) => {
+          const profile = profileMap.get(row.profile_id);
+          if (profile) profile.mediumIds.push(String(row.medium_id));
+        },
+      });
+    }
+    snapshot.mediumProfiles = Array.from(profileMap.values());
+
+    const archiveLogsFromTable = readAllArchiveLogs();
+    if (archiveLogsFromTable.length) {
+      snapshot.archives = { logs: archiveLogsFromTable.map((e) => toArchiveLogMetaPayload(e)) };
+    }
+  }
+
   return snapshot;
 }
 
