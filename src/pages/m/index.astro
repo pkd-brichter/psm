@@ -33,7 +33,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         </div>
 
         <label class="m-device">
-          <span class="m-device-label">Dieses Gerät (erscheint beim Import am PC)</span>
+          <span class="m-device-label">Geräte-Name <span class="m-device-optional">(optional – erscheint beim Import am PC)</span></span>
           <input type="text" class="form-control" data-role="m-device-label" placeholder="z. B. Handy Abbas" />
         </label>
 
@@ -227,6 +227,10 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     font-size: 0.8rem;
     color: var(--color-text-muted);
     margin-bottom: 4px;
+  }
+  .m-device-optional {
+    font-weight: 400;
+    opacity: 0.7;
   }
 
   /* Mittel-Liste: eigener Scroll-Bereich statt endlos langer Seite + Suchfeld */

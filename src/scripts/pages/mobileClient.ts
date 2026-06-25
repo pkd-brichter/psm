@@ -415,12 +415,10 @@ async function start(): Promise<void> {
   const fotosContainer = document.querySelector('[data-feature="fotos"]');
   initFotos(fotosContainer, services, { mobile: true });
 
-  // Datenbank verbinden (löst Reload der Lookups in der Maske aus).
-  await connectDatabase();
-
-  // Teilen-Status + Liste der letzten Erfassungen.
+  // Alle Event-Listener VOR der DB-Verbindung registrieren, damit die UI auch
+  // dann reaktionsfähig bleibt, falls die Datenbankinitialisierung fehlschlägt.
   renderShareStatus();
-  void loadRecent();
+
   subscribeEvent("history:data-changed", (payload) => {
     const type = (payload as { type?: string } | undefined)?.type;
     if (type === "created" || type === "created-bulk") {
@@ -464,6 +462,17 @@ async function start(): Promise<void> {
   });
 
   patchState({ app: { ...getState().app, ready: true } });
+
+  // Datenbank verbinden (löst Reload der Lookups in der Maske aus).
+  // Fehler werden abgefangen und als Toast angezeigt – die UI bleibt in jedem
+  // Fall bedienbar, weil alle Listener schon registriert sind.
+  try {
+    await connectDatabase();
+    void loadRecent();
+  } catch (err) {
+    console.error("[Mobil] Datenbank konnte nicht gestartet werden:", err);
+    toast.error("Datenbank konnte nicht geladen werden. Bitte Seite neu laden.");
+  }
 }
 
 if (document.readyState === "loading") {
