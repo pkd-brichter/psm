@@ -502,6 +502,28 @@ export async function exportSnapshot(): Promise<any> {
 }
 
 /**
+ * Mobile-only: export only history entries not yet shared from this device.
+ * Used by shareMobileData() so repeated shares don't re-send old entries.
+ */
+export async function exportMobileUnshared(): Promise<any> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("exportMobileUnshared");
+}
+
+/**
+ * Mobile-only: mark all currently-unshared history entries as shared.
+ * Call after a successful share so the next share only sends new entries.
+ */
+export async function markMobileShared(): Promise<{ marked: number }> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("markMobileShared");
+}
+
+/**
  * Import database snapshot
  */
 export async function importSnapshot(data: any): Promise<void> {

@@ -11,7 +11,8 @@
  */
 
 import {
-  exportSnapshot,
+  exportMobileUnshared,
+  markMobileShared,
   exportFotos,
   clearFotos,
   persistSqliteDatabaseFile,
@@ -90,7 +91,7 @@ export async function shareMobileData(): Promise<void> {
   let zipped: Uint8Array;
   const device = getDeviceLabel();
   try {
-    const snapshot = await exportSnapshot();
+    const snapshot = await exportMobileUnshared();
     // Metadaten fürs Import-Protokoll am PC (Gerät/Zeitpunkt).
     snapshot.metadata = {
       ...(snapshot.metadata || {}),
@@ -150,6 +151,12 @@ export async function shareMobileData(): Promise<void> {
         title: "PSM-Daten",
         text: "Pflanzenschutz-Erfassung (ZIP inkl. Fotos) – am Desktop über Import/Merge einspielen.",
       });
+      // Erfassungen als geteilt markieren, damit sie beim nächsten Teilen
+      // NICHT erneut mit exportiert werden.
+      await markMobileShared().catch((err) =>
+        console.warn("[Share] markMobileShared fehlgeschlagen:", err),
+      );
+      await persistSqliteDatabaseFile().catch(() => undefined);
       setUnsharedCount(0);
       // WICHTIG (Datenverlust-Schutz): nav.share "gelingt" bereits, wenn das
       // Share-Sheet die Datei an eine Ziel-App (Mail/Files/WhatsApp) ÜBERGIBT –
@@ -186,6 +193,10 @@ export async function shareMobileData(): Promise<void> {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    await markMobileShared().catch((err) =>
+      console.warn("[Share] markMobileShared fehlgeschlagen:", err),
+    );
+    await persistSqliteDatabaseFile().catch(() => undefined);
     setUnsharedCount(0);
     // Beim Download-Fallback NICHT automatisch löschen: a.click() bestätigt nicht,
     // ob die Datei wirklich gespeichert wurde – sonst Datenverlust-Falle.

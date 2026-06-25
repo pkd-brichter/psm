@@ -2409,6 +2409,12 @@ self.onmessage = async function (event) {
       case "exportSnapshot":
         result = await exportSnapshot();
         break;
+      case "exportMobileUnshared":
+        result = await exportMobileUnshared();
+        break;
+      case "markMobileShared":
+        result = await markMobileShared();
+        break;
       case "upsertMedium":
         result = await upsertMedium(payload);
         break;
@@ -3630,6 +3636,26 @@ async function applySchema() {
       console.warn("kultur_stamm Seed übersprungen (nicht fatal):", seedErr);
     }
   }
+
+  // Migration to version 26: mobile_shared_at column – tracks which history
+  // entries have already been sent from the mobile device, so that subsequent
+  // shares only export NEW (not-yet-sent) entries instead of ALL entries.
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  if (postMigrationVersion < 26) {
+    db.exec("BEGIN TRANSACTION");
+    try {
+      if (!hasColumn(db, "history", "mobile_shared_at")) {
+        db.exec("ALTER TABLE history ADD COLUMN mobile_shared_at TEXT");
+      }
+      db.exec("PRAGMA user_version = 26");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 26 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 26 failed:", error);
+      throw error;
+    }
+  }
 }
 
 /**
@@ -4126,6 +4152,190 @@ async function exportSnapshot() {
     items: entry.items,
   }));
   return snapshot;
+}
+
+/**
+ * Export only history entries that have NOT yet been shared from this mobile
+ * device (mobile_shared_at IS NULL). Meta, mediums, and profiles are always
+ * included so the desktop import/merge has all the context it needs.
+ */
+async function exportMobileUnshared() {
+  if (!db) throw new Error("Database not initialized");
+
+  const snapshot = {
+    meta: { version: 1, company: {}, defaults: {}, fieldLabels: {}, measurementMethods: [] },
+    mediums: [],
+    mediumProfiles: [],
+    history: [],
+    archives: { logs: [] },
+  };
+
+  db.exec({
+    sql: "SELECT key, value FROM meta",
+    callback: (row) => {
+      const key = row[0];
+      const value = row[1];
+      if (key && key.startsWith("lookup:")) return;
+      try {
+        const parsed = JSON.parse(value);
+        if (key === "company") snapshot.meta.company = parsed;
+        else if (key === "defaults") snapshot.meta.defaults = parsed;
+        else if (key === "fieldLabels") snapshot.meta.fieldLabels = parsed;
+        else if (key === "version") snapshot.meta.version = parsed;
+        else if (key === "archives") snapshot.archives = parsed;
+      } catch {}
+    },
+  });
+
+  db.exec({
+    sql: "SELECT id, label, type, unit, requires, config FROM measurement_methods",
+    callback: (row) => {
+      snapshot.meta.measurementMethods.push({
+        id: row[0], label: row[1], type: row[2], unit: row[3],
+        requires: JSON.parse(row[4] || "[]"),
+        config: JSON.parse(row[5] || "{}"),
+      });
+    },
+  });
+
+  db.exec({
+    sql: "SELECT id, name, unit, method_id, value, zulassungsnummer, wartezeit, wirkstoff FROM mediums",
+    callback: (row) => {
+      snapshot.mediums.push({
+        id: row[0], name: row[1], unit: row[2], methodId: row[3], value: row[4],
+        zulassungsnummer: row[5] || null, wartezeit: row[6] || null, wirkstoff: row[7] || null,
+      });
+    },
+  });
+
+  const profileMap = new Map();
+  db.exec({
+    sql: `SELECT id, name, created_at, updated_at FROM medium_profiles ORDER BY name COLLATE NOCASE`,
+    rowMode: "object",
+    callback: (row) => {
+      profileMap.set(row.id, {
+        id: String(row.id), name: String(row.name ?? ""),
+        createdAt: row.created_at || new Date().toISOString(),
+        updatedAt: row.updated_at || new Date().toISOString(),
+        mediumIds: [],
+      });
+    },
+  });
+  if (profileMap.size) {
+    db.exec({
+      sql: `SELECT profile_id, medium_id, sort_order FROM medium_profile_mediums ORDER BY profile_id, sort_order, rowid`,
+      rowMode: "object",
+      callback: (row) => {
+        const profile = profileMap.get(row.profile_id);
+        if (profile) profile.mediumIds.push(String(row.medium_id));
+      },
+    });
+  }
+  snapshot.mediumProfiles = Array.from(profileMap.values());
+
+  const archiveLogsFromTable = readAllArchiveLogs();
+  if (archiveLogsFromTable.length) {
+    snapshot.archives = { logs: archiveLogsFromTable.map((e) => toArchiveLogMetaPayload(e)) };
+  }
+
+  // Only entries that have NOT been shared yet from this device.
+  const historyMap = new Map();
+  db.exec({
+    sql: `SELECT id, created_at, header_json, client_uuid,
+            ersteller, standort, kultur, eppo_code, bbch, datum, date_iso,
+            uhrzeit, usage_type, area_ha, area_ar, area_sqm, water_volume,
+            invekos, gps, gps_latitude, gps_longitude, gps_point_id,
+            qs_maschine, qs_schaderreger, qs_verantwortlicher, qs_wetter, qs_behandlungsart
+          FROM history WHERE mobile_shared_at IS NULL ORDER BY created_at DESC`,
+    rowMode: "object",
+    callback: (row) => {
+      let header = {};
+      try { header = JSON.parse(row.header_json || "{}"); } catch (e) {}
+      historyMap.set(row.id, {
+        header: {
+          createdAt: row.created_at,
+          ersteller: row.ersteller ?? header.ersteller,
+          standort: row.standort ?? header.standort,
+          kultur: row.kultur ?? header.kultur,
+          eppoCode: row.eppo_code ?? header.eppoCode,
+          bbch: row.bbch ?? header.bbch,
+          datum: row.datum ?? header.datum,
+          dateIso: row.date_iso ?? header.dateIso,
+          uhrzeit: row.uhrzeit ?? header.uhrzeit,
+          usageType: row.usage_type ?? header.usageType,
+          areaHa: row.area_ha ?? header.areaHa,
+          areaAr: row.area_ar ?? header.areaAr,
+          areaSqm: row.area_sqm ?? header.areaSqm,
+          waterVolume: row.water_volume ?? header.waterVolume,
+          invekos: row.invekos ?? header.invekos,
+          gps: row.gps ?? header.gps,
+          gpsCoordinates: row.gps_latitude != null && row.gps_longitude != null
+            ? { latitude: row.gps_latitude, longitude: row.gps_longitude }
+            : header.gpsCoordinates || null,
+          gpsPointId: row.gps_point_id ?? header.gpsPointId,
+          qsMaschine: row.qs_maschine ?? header.qsMaschine,
+          qsSchaderreger: row.qs_schaderreger ?? header.qsSchaderreger,
+          qsVerantwortlicher: row.qs_verantwortlicher ?? header.qsVerantwortlicher,
+          qsWetter: row.qs_wetter ?? header.qsWetter,
+          qsBehandlungsart: row.qs_behandlungsart ?? header.qsBehandlungsart,
+          savedAt: header.savedAt || row.created_at,
+          clientUuid: row.client_uuid ?? header.clientUuid ?? null,
+        },
+        items: [],
+      });
+    },
+  });
+
+  db.exec({
+    sql: `SELECT history_id, medium_id, payload_json,
+            medium_name, medium_unit, method_id, method_label, medium_value,
+            calculated_total, zulassungsnummer, wartezeit, wirkstoff,
+            input_area_ha, input_area_ar, input_area_sqm, input_water_volume
+          FROM history_items`,
+    rowMode: "object",
+    callback: (row) => {
+      if (historyMap.has(row.history_id)) {
+        let payload = {};
+        try { payload = JSON.parse(row.payload_json || "{}"); } catch (e) {}
+        historyMap.get(row.history_id).items.push({
+          id: row.medium_id ?? payload.id,
+          mediumId: row.medium_id ?? payload.mediumId,
+          name: row.medium_name ?? payload.name,
+          unit: row.medium_unit ?? payload.unit,
+          methodId: row.method_id ?? payload.methodId,
+          methodLabel: row.method_label ?? payload.methodLabel,
+          value: row.medium_value ?? payload.value,
+          total: row.calculated_total ?? payload.total,
+          zulassungsnummer: row.zulassungsnummer ?? payload.zulassungsnummer,
+          wartezeit: row.wartezeit ?? payload.wartezeit,
+          wirkstoff: row.wirkstoff ?? payload.wirkstoff,
+          inputs: {
+            areaHa: row.input_area_ha ?? payload.inputs?.areaHa,
+            areaAr: row.input_area_ar ?? payload.inputs?.areaAr,
+            areaSqm: row.input_area_sqm ?? payload.inputs?.areaSqm,
+            waterVolume: row.input_water_volume ?? payload.inputs?.waterVolume,
+          },
+        });
+      }
+    },
+  });
+
+  snapshot.history = Array.from(historyMap.values()).map((e) => ({ ...e.header, items: e.items }));
+  return snapshot;
+}
+
+/**
+ * Mark all currently-unshared history entries as shared from this mobile
+ * device. Called after a successful share so they are excluded from the
+ * next export.
+ */
+async function markMobileShared() {
+  if (!db) throw new Error("Database not initialized");
+  const count = db.selectValue("SELECT COUNT(*) FROM history WHERE mobile_shared_at IS NULL") || 0;
+  if (count > 0) {
+    db.exec("UPDATE history SET mobile_shared_at = datetime('now') WHERE mobile_shared_at IS NULL");
+  }
+  return { marked: count };
 }
 
 /**
