@@ -535,6 +535,30 @@ export async function deleteSharedHistory(): Promise<{ deleted: number }> {
 }
 
 /**
+ * Mobile-only: mark all currently-unshared fotos as shared.
+ * Must be called (and persisted) BEFORE clearSharedFotos() so that even if
+ * the worker restarts from IndexedDB between the two steps, the fotos are
+ * still excluded from the next export.
+ */
+export async function markFotosShared(): Promise<{ marked: number }> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("markFotosShared");
+}
+
+/**
+ * Mobile-only: delete all fotos that have been marked as shared.
+ * Only call after markFotosShared() has been persisted.
+ */
+export async function clearSharedFotos(): Promise<{ deleted: number }> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("clearSharedFotos");
+}
+
+/**
  * Import database snapshot
  */
 export async function importSnapshot(data: any): Promise<void> {

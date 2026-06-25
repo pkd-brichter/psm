@@ -2418,6 +2418,12 @@ self.onmessage = async function (event) {
       case "deleteSharedHistory":
         result = await deleteSharedHistory();
         break;
+      case "markFotosShared":
+        result = await markFotosShared();
+        break;
+      case "clearSharedFotos":
+        result = await clearSharedFotos();
+        break;
       case "upsertMedium":
         result = await upsertMedium(payload);
         break;
@@ -3640,9 +3646,8 @@ async function applySchema() {
     }
   }
 
-  // Migration to version 26: mobile_shared_at column – tracks which history
-  // entries have already been sent from the mobile device, so that subsequent
-  // shares only export NEW (not-yet-sent) entries instead of ALL entries.
+  // Migration to version 26: mobile_shared_at on history – tracks which
+  // history entries have already been sent from this device.
   postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
   if (postMigrationVersion < 26) {
     db.exec("BEGIN TRANSACTION");
@@ -3656,6 +3661,26 @@ async function applySchema() {
     } catch (error) {
       db.exec("ROLLBACK");
       console.error("Migration to version 26 failed:", error);
+      throw error;
+    }
+  }
+
+  // Migration to version 27: mobile_shared_at on fotos – same tracking for
+  // photos so exportFotos() can filter out already-shared ones even if the
+  // worker was restarted and reloaded from IndexedDB before the delete ran.
+  postMigrationVersion = db.selectValue("PRAGMA user_version") || 0;
+  if (postMigrationVersion < 27) {
+    db.exec("BEGIN TRANSACTION");
+    try {
+      if (!hasColumn(db, "fotos", "mobile_shared_at")) {
+        db.exec("ALTER TABLE fotos ADD COLUMN mobile_shared_at TEXT");
+      }
+      db.exec("PRAGMA user_version = 27");
+      db.exec("COMMIT");
+      console.log("Database migrated to version 27 successfully");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      console.error("Migration to version 27 failed:", error);
       throw error;
     }
   }
@@ -5469,9 +5494,12 @@ async function exportFotos() {
   ensureFotosTable();
   const rows = [];
   db.exec({
+    // Only export fotos that have NOT yet been shared from this device.
+    // mobile_shared_at IS NULL covers both: fotos that predate the column
+    // (migration adds it as NULL) and newly created fotos.
     sql: `SELECT client_uuid, created_at, entry_uuid, kategorie, titel, standort,
                  kultur, gps_latitude, gps_longitude, notiz, device, mime, width, height, bytes, data
-          FROM fotos ORDER BY created_at ASC, id ASC`,
+          FROM fotos WHERE mobile_shared_at IS NULL ORDER BY created_at ASC, id ASC`,
     rowMode: "object",
     callback: (row) => {
       rows.push({
@@ -5495,6 +5523,26 @@ async function exportFotos() {
     },
   });
   return { items: rows };
+}
+
+async function markFotosShared() {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const count = db.selectValue("SELECT COUNT(*) FROM fotos WHERE mobile_shared_at IS NULL") || 0;
+  if (count > 0) {
+    db.exec("UPDATE fotos SET mobile_shared_at = datetime('now') WHERE mobile_shared_at IS NULL");
+  }
+  return { marked: count };
+}
+
+async function clearSharedFotos() {
+  if (!db) throw new Error("Database not initialized");
+  ensureFotosTable();
+  const count = db.selectValue("SELECT COUNT(*) FROM fotos WHERE mobile_shared_at IS NOT NULL") || 0;
+  if (count > 0) {
+    db.exec("DELETE FROM fotos WHERE mobile_shared_at IS NOT NULL");
+  }
+  return { deleted: count };
 }
 
 async function deleteFoto(payload = {}) {

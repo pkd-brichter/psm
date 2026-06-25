@@ -15,7 +15,8 @@ import {
   markMobileShared,
   deleteSharedHistory,
   exportFotos,
-  clearFotos,
+  markFotosShared,
+  clearSharedFotos,
   persistSqliteDatabaseFile,
 } from "@scripts/core/storage/sqlite";
 import { emit } from "@scripts/core/eventBus";
@@ -24,32 +25,69 @@ import { setUnsharedCount } from "./unshared";
 import { zipSync, strToU8 } from "fflate";
 
 /**
- * Nach erfolgreichem Senden: alle geteilten History-Einträge und Fotos
- * vollständig löschen. Mobil = reiner Erfassungs-/Weitergabe-Client,
- * kein Ballast auf dem Gerät hinterlassen.
+ * Zweiphasiger Cleanup nach erfolgreichem Share:
+ *
+ * Phase 1 – Markieren + Persistieren (kritisch):
+ *   Alle noch ungeteilten History-Einträge und Fotos werden mit
+ *   mobile_shared_at = datetime('now') gestempelt und sofort in der
+ *   IndexedDB gespeichert. Damit sind sie beim nächsten Export dauerhaft
+ *   ausgeschlossen – selbst wenn der Worker danach abstürzt und die DB
+ *   aus der IndexedDB neu lädt.
+ *
+ * Phase 2 – Löschen (best-effort):
+ *   Die markierten Einträge werden physisch aus der DB entfernt. Schlägt
+ *   das Persistieren hier fehl, sind die Daten beim nächsten Worker-Start
+ *   zwar wieder sichtbar, werden aber wegen mobile_shared_at IS NOT NULL
+ *   nicht mehr exportiert.
  */
 async function cleanupAfterShare(): Promise<void> {
-  await markMobileShared().catch((err) =>
-    console.warn("[Share] markMobileShared fehlgeschlagen:", err),
-  );
-  const histRes = await deleteSharedHistory().catch((err) => {
-    console.warn("[Share] deleteSharedHistory fehlgeschlagen:", err);
-    return null;
-  });
-  const fotosRes = await clearFotos().catch((err) => {
-    console.warn("[Share] clearFotos fehlgeschlagen:", err);
-    return null;
-  });
-  await persistSqliteDatabaseFile().catch(() => undefined);
-  setUnsharedCount(0);
+  // --- Phase 1: Markieren (atomar, Persist darf NICHT still scheitern) ----
+  const [histMark, fotoMark] = await Promise.all([
+    markMobileShared().catch((err) => {
+      console.warn("[Share] markMobileShared fehlgeschlagen:", err);
+      return null;
+    }),
+    markFotosShared().catch((err) => {
+      console.warn("[Share] markFotosShared fehlgeschlagen:", err);
+      return null;
+    }),
+  ]);
 
-  // UI aktualisieren: History-Liste leeren, Foto-Badge zurücksetzen.
+  try {
+    await persistSqliteDatabaseFile();
+  } catch (err) {
+    // Markierungen konnten nicht persistiert werden → Fotos könnten bei
+    // Worker-Neustart erneut exportiert werden. Nutzer warnen.
+    console.error("[Share] Kritisch: Persist nach Markierung fehlgeschlagen", err);
+    toast.error(
+      "Warnung: Datenbank konnte nicht gespeichert werden. " +
+      "Beim nächsten Teilen könnten bereits gesendete Daten erneut erscheinen.",
+    );
+  }
+
+  // --- Phase 2: Löschen (best-effort, Markierung schützt vor Doppel-Export) -
+  const [histDel, fotoDel] = await Promise.all([
+    deleteSharedHistory().catch((err) => {
+      console.warn("[Share] deleteSharedHistory fehlgeschlagen:", err);
+      return null;
+    }),
+    clearSharedFotos().catch((err) => {
+      console.warn("[Share] clearSharedFotos fehlgeschlagen:", err);
+      return null;
+    }),
+  ]);
+  await persistSqliteDatabaseFile().catch(() => undefined);
+
+  // --- UI aktualisieren ---------------------------------------------------
+  setUnsharedCount(0);
   emit("history:data-changed", { type: "deleted" });
   window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: 0 } }));
 
   const parts: string[] = [];
-  if (histRes?.deleted) parts.push(`${histRes.deleted} Eintrag/Einträge`);
-  if (fotosRes?.deleted) parts.push(`${fotosRes.deleted} Foto(s)`);
+  const hd = histDel?.deleted ?? histMark?.marked ?? 0;
+  const fd = fotoDel?.deleted ?? fotoMark?.marked ?? 0;
+  if (hd) parts.push(`${hd} Eintrag/Einträge`);
+  if (fd) parts.push(`${fd} Foto(s)`);
   toast.info(parts.length ? `Geteilt und gelöscht: ${parts.join(", ")}.` : "Geteilt.");
 }
 
@@ -113,6 +151,7 @@ export async function shareMobileData(): Promise<void> {
     // ZIP-Inhalt vorbereiten: die JPEGs werden als ECHTE Binärdateien abgelegt
     // (kein base64-Aufblähen). In der JSON stehen nur die Foto-Metadaten + ein
     // Dateiverweis (`file`); am PC werden Bild + Meta wieder zusammengeführt.
+    // exportFotos() gibt nur Fotos mit mobile_shared_at IS NULL zurück.
     const files: Record<string, Uint8Array | [Uint8Array, { level: 0 }]> = {};
     try {
       const fotos = (await exportFotos()).items || [];
