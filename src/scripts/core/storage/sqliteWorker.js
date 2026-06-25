@@ -4198,32 +4198,15 @@ async function exportMobileUnshared() {
     archives: { logs: [] },
   };
 
-  // --- Meta (immer exportieren: Firmeninfos für Import-Protokoll) ---------
+  // Firmenname immer exportieren (für Import-Protokoll am PC).
   db.exec({
-    sql: "SELECT key, value FROM meta",
+    sql: "SELECT key, value FROM meta WHERE key IN ('company', 'version')",
     callback: (row) => {
-      const key = row[0];
-      const value = row[1];
-      if (key && key.startsWith("lookup:")) return;
       try {
-        const parsed = JSON.parse(value);
-        if (key === "company") snapshot.meta.company = parsed;
-        else if (key === "defaults") snapshot.meta.defaults = parsed;
-        else if (key === "fieldLabels") snapshot.meta.fieldLabels = parsed;
-        else if (key === "version") snapshot.meta.version = parsed;
-        else if (key === "archives") snapshot.archives = parsed;
+        const parsed = JSON.parse(row[1]);
+        if (row[0] === "company") snapshot.meta.company = parsed;
+        else if (row[0] === "version") snapshot.meta.version = parsed;
       } catch {}
-    },
-  });
-
-  db.exec({
-    sql: "SELECT id, label, type, unit, requires, config FROM measurement_methods",
-    callback: (row) => {
-      snapshot.meta.measurementMethods.push({
-        id: row[0], label: row[1], type: row[2], unit: row[3],
-        requires: JSON.parse(row[4] || "[]"),
-        config: JSON.parse(row[5] || "{}"),
-      });
     },
   });
 
@@ -4311,10 +4294,35 @@ async function exportMobileUnshared() {
 
   snapshot.history = Array.from(historyMap.values()).map((e) => ({ ...e.header, items: e.items }));
 
-  // --- Mediums + Profile nur wenn History-Einträge vorhanden --------------
-  // Bei reinem Foto-Share enthält die JSON sonst den Mittel-Katalog, was wie
-  // PSM-Einträge aussieht obwohl keine erstellt wurden.
+  // Bei PSM-Einträgen: vollständige Meta + Mittel + Profile exportieren.
+  // Bei reinem Foto-Share: nur Firmenname reicht – kein Konfigurations-Ballast.
   if (historyMap.size > 0) {
+    db.exec({
+      sql: "SELECT key, value FROM meta",
+      callback: (row) => {
+        const key = row[0];
+        const value = row[1];
+        if (key && key.startsWith("lookup:")) return;
+        try {
+          const parsed = JSON.parse(value);
+          if (key === "defaults") snapshot.meta.defaults = parsed;
+          else if (key === "fieldLabels") snapshot.meta.fieldLabels = parsed;
+          else if (key === "archives") snapshot.archives = parsed;
+        } catch {}
+      },
+    });
+
+    db.exec({
+      sql: "SELECT id, label, type, unit, requires, config FROM measurement_methods",
+      callback: (row) => {
+        snapshot.meta.measurementMethods.push({
+          id: row[0], label: row[1], type: row[2], unit: row[3],
+          requires: JSON.parse(row[4] || "[]"),
+          config: JSON.parse(row[5] || "{}"),
+        });
+      },
+    });
+
     db.exec({
       sql: "SELECT id, name, unit, method_id, value, zulassungsnummer, wartezeit, wirkstoff FROM mediums",
       callback: (row) => {
