@@ -12,6 +12,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
             <button type="button" class="lang-btn" data-lang="de" title="Deutsch">DE</button>
             <button type="button" class="lang-btn" data-lang="pl" title="Polski">PL</button>
           </div>
+          <button type="button" class="m-connect-btn" data-action="m-connect" title="Server verbinden" aria-label="Server verbinden">
+            <i class="bi bi-qr-code-scan"></i>
+          </button>
           <a class="m-desktop-link" href="../">Desktop &rarr;</a>
         </div>
       </div>
@@ -115,6 +118,23 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     font-size: 0.8rem;
     color: var(--color-text-muted);
     text-decoration: none;
+  }
+  .m-connect-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.14));
+    border-radius: 9px;
+    background: var(--color-surface-2, rgba(255, 255, 255, 0.06));
+    color: var(--color-text);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  .m-connect-btn:active {
+    transform: scale(0.95);
   }
   .m-share-bar {
     display: flex;
@@ -414,6 +434,133 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   .m-modal .calc-snapshot-card__mediums {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* ---- QR-Scanner / Server verbinden ---- */
+  .m-qr-scanwrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-height: 52vh;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .m-qr-scanwrap.m-qr-nocam {
+    display: none;
+  }
+  .m-qr-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .m-qr-frame {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    width: 62%;
+    aspect-ratio: 1 / 1;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    border-radius: 14px;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+  }
+  .m-qr-status {
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    margin: 12px 0 8px;
+  }
+  .m-qr-current {
+    background: var(--color-surface-2, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+  }
+  .m-qr-none {
+    color: var(--color-text-muted);
+  }
+  .m-qr-none i {
+    margin-right: 6px;
+  }
+  .m-qr-row {
+    display: flex;
+    gap: 10px;
+    padding: 2px 0;
+  }
+  .m-qr-k {
+    flex: 0 0 72px;
+    color: var(--color-text-muted);
+  }
+  .m-qr-v {
+    flex: 1;
+    color: var(--color-text);
+    word-break: break-all;
+  }
+  .m-qr-manual {
+    margin-bottom: 12px;
+  }
+  .m-qr-manual > summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--color-primary, #22c55e);
+    padding: 6px 0;
+  }
+  .m-qr-field {
+    display: block;
+    margin: 10px 0;
+  }
+  .m-qr-field > span {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin-bottom: 4px;
+  }
+  .m-qr-field input {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.14));
+    border-radius: 8px;
+    background: var(--color-surface-2, rgba(255, 255, 255, 0.04));
+    color: var(--color-text);
+    font-size: 0.95rem;
+  }
+  .m-qr-manual .m-share-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .m-qr-note {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    line-height: 1.45;
+    margin: 4px 0 0;
+  }
+  .m-qr-note i {
+    margin-right: 4px;
+  }
+  .m-qr .m-modal-foot {
+    display: flex;
+    gap: 10px;
+  }
+  .m-qr .m-modal-foot .m-share-btn {
+    flex: 1;
+    width: auto;
+  }
+  .m-qr-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 1;
+    padding: 12px;
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.16));
+    border-radius: 9px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+    cursor: pointer;
   }
 
   /* "Zum Home-Bildschirm"-Hinweis (gegen iOS 7-Tage-Datenlöschung) */

@@ -37,6 +37,7 @@ import {
 import { printEntriesSafe } from "@scripts/features/shared/printing";
 import { renderCalculationSnapshot } from "@scripts/features/shared/calculationSnapshot";
 import { initFotos } from "@scripts/features/fotos";
+import { openQrConnectModal } from "@scripts/features/sync/qrConnect";
 import { escapeHtml, formatDateFromIso } from "@scripts/core/utils";
 
 let started = false;
@@ -443,6 +444,10 @@ async function start(): Promise<void> {
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-action="m-share"]')) {
       void handleShare();
+      return;
+    }
+    if (target?.closest('[data-action="m-connect"]')) {
+      openQrConnectModal();
       return;
     }
     const navBtn = target?.closest<HTMLElement>(".m-nav-btn[data-mview]");
