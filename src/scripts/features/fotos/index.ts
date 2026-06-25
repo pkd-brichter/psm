@@ -300,32 +300,45 @@ export function initFotos(
       ${emptyHtml}
     </div>`;
   } else {
-    // Desktop: flache Toolbar – eine Zeile, kein Wrapping. Aufnahme-Buttons links,
-    // Browse-Tools rechts, flexibler Spacer dazwischen.
+    // Desktop: zweispaltiges App-Layout im Acker-Planer-Stil – Sidebar (Aufnahme
+    // + Filter) links, scrollbare Galerie rechts. Alles in EINER gerundeten Karte.
     host.innerHTML = `
     <div class="fotos-wrap fotos-wrap--desktop">
-      <div class="fotos-toolbar">
-        ${cameraBtn()}
-        ${galleryBtn}
-        <label class="fotos-katpick" title="${escapeHtml(t("Kategorie für neue Fotos"))}">
-          <i class="bi bi-tag-fill"></i>
-          ${captureSelect("form-select-sm")}
-        </label>
-        <span class="fotos-hint" data-role="fotos-status"></span>
-        <span class="fotos-toolbar-fill"></span>
-        ${searchBox}
-        <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
-          t("Sortierung umschalten"),
-        )}"></button>
-        ${selectBtn}
+      <aside class="fotos-side">
+        <div class="fotos-side-scroll">
+          <div class="fotos-capture-card">
+            ${cameraBtn(" fotos-add-hero")}
+            ${galleryBtn}
+            <label class="fotos-side-field">
+              <span>${escapeHtml(t("Kategorie für neue Fotos"))}</span>
+              ${captureSelect()}
+            </label>
+            <span class="fotos-hint" data-role="fotos-status"></span>
+          </div>
+          <div class="fotos-side-group">
+            <div class="fotos-side-cap">${escapeHtml(t("Filter"))}</div>
+            <div class="fotos-filter fotos-filter--side" data-role="fotos-filter">${buildFilterChips(
+              activeFilter,
+            )}</div>
+          </div>
+        </div>
+      </aside>
+      <div class="fotos-main">
+        <div class="fotos-mainbar">
+          ${searchBox}
+          <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
+            t("Sortierung umschalten"),
+          )}"></button>
+          <span class="fotos-mainbar-fill"></span>
+          <span class="fotos-count" data-role="fotos-count"></span>
+          ${selectBtn}
+        </div>
+        <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
+        <div class="fotos-main-scroll">
+          <div class="fotos-gallery" data-role="fotos-gallery"></div>
+          ${emptyHtml}
+        </div>
       </div>
-      <div class="fotos-browsebar">
-        <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
-        <span class="fotos-count" data-role="fotos-count"></span>
-      </div>
-      <div class="fotos-bulkbar" data-role="fotos-bulkbar" hidden></div>
-      <div class="fotos-gallery" data-role="fotos-gallery"></div>
-      ${emptyHtml}
     </div>`;
   }
 

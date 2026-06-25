@@ -1543,10 +1543,206 @@ html.qs-mode .card-dark {
 
 /* ===== Fotos (Galerie + Vollansicht) ===== */
 .fotos-wrap { padding: 4px 0; }
-/* Desktop: Inhalt auf eine ruhige Lesebreite begrenzen + zentrieren (wie der
-   restliche App-Content), sonst zerfasert die Galerie über die ganze Ultrawide-
-   Breite und wenige Fotos „kleben" links im Leerraum. */
-.fotos-wrap--desktop { max-width: 1200px; margin-inline: auto; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DESKTOP-GALERIE — zweispaltiges App-Layout im Acker-Planer-Stil
+   (Sidebar: Aufnahme + Filter · Hauptbereich: scrollbare Galerie). Nutzt die
+   globalen --ap-* Design-Tokens für eine konsistente, saubere Farbsprache.
+   ════════════════════════════════════════════════════════════════════════════ */
+.fotos-wrap--desktop {
+  display: flex;
+  gap: 0;
+  height: calc(100vh - 150px);
+  min-height: 520px;
+  border: 1px solid var(--ap-line);
+  border-radius: var(--ap-r-lg);
+  overflow: hidden;
+  background: var(--ap-surface);
+  box-shadow: var(--ap-shadow-sm);
+  padding: 0;
+  color: var(--ap-ink);
+}
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.fotos-side {
+  width: 340px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ap-line);
+  background: var(--ap-surface);
+  overflow: hidden;
+}
+.fotos-side-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--ap-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ap-5);
+}
+.fotos-capture-card {
+  background: var(--ap-green-tint);
+  border: 1px solid var(--ap-green-line);
+  border-radius: var(--ap-r-lg);
+  padding: var(--ap-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ap-3);
+}
+.fotos-capture-card .fotos-add { width: 100%; justify-content: center; }
+.fotos-side-field { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.fotos-side-field > span {
+  font-size: var(--ap-fs-xs);
+  font-weight: var(--ap-w-bold);
+  color: var(--ap-ink-2);
+}
+.fotos-side-field select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--ap-line-2);
+  border-radius: var(--ap-r-sm);
+  font-size: var(--ap-fs-sm);
+  background: var(--ap-surface);
+  color: var(--ap-ink);
+  min-height: var(--ap-control-sm);
+}
+.fotos-capture-card .fotos-hint { font-size: var(--ap-fs-xs); color: var(--ap-ink-3); margin: 0; }
+.fotos-capture-card .fotos-hint:empty { display: none; }
+.fotos-side-cap {
+  font-size: var(--ap-fs-xs);
+  font-weight: var(--ap-w-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ap-ink-3);
+  margin-bottom: var(--ap-2);
+}
+/* Filter als vertikale Liste in der Sidebar */
+.fotos-filter--side { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0; }
+.fotos-filter--side .fotos-filtergroup { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; }
+.fotos-filter--side .fotos-filtercap {
+  font-size: var(--ap-fs-xs);
+  font-weight: var(--ap-w-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ap-ink-3);
+  margin: var(--ap-3) 0 2px;
+}
+.fotos-filter--side .fotos-chip {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ap-ink-2);
+  border-radius: var(--ap-r-sm);
+  padding: 10px 12px;
+  font-size: var(--ap-fs-sm);
+  font-weight: var(--ap-w-med);
+  min-height: var(--ap-control-sm);
+}
+.fotos-filter--side .fotos-chip:hover { background: var(--ap-surface-3); color: var(--ap-ink); }
+.fotos-filter--side .fotos-chip.is-active {
+  background: var(--ap-green-soft);
+  border-color: var(--ap-green-line);
+  color: var(--ap-green-dark);
+  font-weight: var(--ap-w-bold);
+}
+.fotos-filter--side .fotos-chip-n {
+  margin-left: auto;
+  background: var(--ap-surface-3);
+  color: var(--ap-ink-3);
+  font-size: var(--ap-fs-xs);
+  font-weight: var(--ap-w-bold);
+}
+.fotos-filter--side .fotos-chip.is-active .fotos-chip-n { background: var(--ap-green-line); color: var(--ap-green-dark); }
+/* ── Hauptbereich ─────────────────────────────────────────────────────────── */
+.fotos-main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.fotos-mainbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ap-2);
+  padding: var(--ap-3) var(--ap-4);
+  border-bottom: 1px solid var(--ap-line);
+  flex: none;
+}
+.fotos-mainbar-fill { flex: 1 1 auto; }
+.fotos-mainbar .fotos-search {
+  max-width: 320px;
+  min-width: 140px;
+  flex: 0 1 320px;
+  padding: 10px 14px;
+  border: 1px solid var(--ap-line-2);
+  border-radius: var(--ap-r-sm);
+  font-size: var(--ap-fs-sm);
+  background: var(--ap-surface);
+  color: var(--ap-ink);
+  min-height: var(--ap-control-sm);
+}
+.fotos-main-scroll { flex: 1; overflow-y: auto; padding: var(--ap-4); }
+.fotos-main .fotos-empty { padding: var(--ap-6) var(--ap-2); color: var(--ap-ink-3); }
+
+/* Buttons im Acker-Stil – nur im Desktop-Wrap (Mobil unberührt) */
+.fotos-wrap--desktop .btn-psm-primary {
+  background: var(--ap-green);
+  border-color: var(--ap-green);
+  color: var(--ap-on-green);
+  font-weight: var(--ap-w-bold);
+  border-radius: var(--ap-r);
+  min-height: var(--ap-control-sm);
+  padding: 11px 18px;
+  font-size: var(--ap-fs-sm);
+}
+.fotos-wrap--desktop .btn-psm-primary:hover,
+.fotos-wrap--desktop .btn-psm-primary:focus {
+  background: var(--ap-green-dark);
+  border-color: var(--ap-green-dark);
+  color: var(--ap-on-green);
+}
+.fotos-wrap--desktop .btn-psm-secondary-outline {
+  background: var(--ap-surface);
+  border: 1px solid var(--ap-line-2);
+  color: var(--ap-ink-2);
+  border-radius: var(--ap-r);
+  min-height: var(--ap-control-sm);
+  padding: 11px 16px;
+  font-weight: var(--ap-w-med);
+  font-size: var(--ap-fs-sm);
+}
+.fotos-wrap--desktop .btn-psm-secondary-outline:hover,
+.fotos-wrap--desktop .btn-psm-secondary-outline:focus {
+  background: var(--ap-surface-3);
+  border-color: var(--ap-line-2);
+  color: var(--ap-ink);
+}
+.fotos-wrap--desktop .fotos-add-hero { font-size: var(--ap-fs-md); padding-top: 14px; padding-bottom: 14px; }
+/* Klarer Tastatur-Fokus wie im Acker-Planer */
+.fotos-wrap--desktop button:focus-visible,
+.fotos-wrap--desktop input:focus-visible,
+.fotos-wrap--desktop select:focus-visible,
+.fotos-wrap--desktop textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--ap-focus);
+  border-color: var(--ap-green) !important;
+}
+.fotos-wrap--desktop button:active { transform: translateY(0.5px); }
+/* Dezente Scrollbalken in den Panels */
+.fotos-wrap--desktop *::-webkit-scrollbar { width: 10px; height: 10px; }
+.fotos-wrap--desktop *::-webkit-scrollbar-thumb {
+  background: var(--ap-line-2);
+  border-radius: var(--ap-r-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.fotos-wrap--desktop *::-webkit-scrollbar-thumb:hover { background: var(--ap-ink-3); background-clip: padding-box; }
+.fotos-wrap--desktop *::-webkit-scrollbar-track { background: transparent; }
+/* Schmales Fenster: Sidebar nach oben stapeln, Höhe freigeben */
+@media (max-width: 860px) {
+  .fotos-wrap--desktop { flex-direction: column; height: auto; min-height: 0; }
+  .fotos-side { width: 100%; min-width: 0; border-right: 0; border-bottom: 1px solid var(--ap-line); }
+  .fotos-side-scroll { max-height: 50vh; }
+  .fotos-main-scroll { overflow: visible; }
+}
 .fotos-bar {
   display: flex;
   align-items: center;
@@ -1629,6 +1825,52 @@ html.qs-mode .card-dark {
 .fotos-sort:hover { border-color: var(--border-2); }
 .fotos-count { font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
 
+/* ── Desktop-Galerie: Acker-Token-Look (Mobil bleibt unberührt) ───────────── */
+.fotos-wrap--desktop .fotos-sort {
+  border: 1px solid var(--ap-line-2);
+  background: var(--ap-surface);
+  color: var(--ap-ink-2);
+  border-radius: var(--ap-r-sm);
+  padding: 10px 14px;
+  font-size: var(--ap-fs-sm);
+  font-weight: var(--ap-w-med);
+  min-height: var(--ap-control-sm);
+}
+.fotos-wrap--desktop .fotos-sort:hover { background: var(--ap-surface-3); color: var(--ap-ink); border-color: var(--ap-line-2); }
+.fotos-wrap--desktop .fotos-count { font-size: var(--ap-fs-sm); color: var(--ap-ink-3); font-weight: var(--ap-w-med); }
+.fotos-wrap--desktop .fotos-section { margin-bottom: var(--ap-5); }
+.fotos-wrap--desktop .fotos-section-head {
+  background: var(--ap-surface);
+  border-bottom: 1px solid var(--ap-line);
+  color: var(--ap-ink);
+  font-size: var(--ap-fs-sm);
+  font-weight: var(--ap-w-bold);
+  padding: 6px 2px;
+}
+.fotos-wrap--desktop .fotos-section-head span { color: var(--ap-ink-3); }
+.fotos-wrap--desktop .fotos-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--ap-3); }
+.fotos-wrap--desktop .fotos-tile {
+  border: 1px solid var(--ap-line);
+  border-radius: var(--ap-r-sm);
+  background: var(--ap-surface-2);
+  transition: box-shadow var(--ap-t), border-color var(--ap-t), transform var(--ap-t);
+}
+.fotos-wrap--desktop .fotos-tile:hover {
+  border-color: var(--ap-green-line);
+  box-shadow: var(--ap-shadow-sm);
+  transform: translateY(-1px);
+}
+.fotos-wrap--desktop .fotos-tile.is-selected { outline-color: var(--ap-green); }
+.fotos-wrap--desktop .fotos-bulkbar {
+  background: var(--ap-green-tint);
+  border: 1px solid var(--ap-green-line);
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  margin: 0;
+  padding: var(--ap-2) var(--ap-4);
+}
+
 /* ---- Mobil: aufnahme-zuerst Oberfläche (klar getrennt von der Galerie) ---- */
 .fotos-capture {
   background: var(--surface-1);
@@ -1668,30 +1910,6 @@ html.qs-mode .card-dark {
 .fotos-filter--scroll[hidden] { display: none; }
 .fotos-filter--scroll::-webkit-scrollbar { display: none; }
 .fotos-filter--scroll .fotos-chip { flex: 0 0 auto; padding: 7px 14px; font-size: 0.85rem; }
-
-/* ---- Desktop: flache Toolbar – eine Zeile, kein Wrapping, Spacer als Trenner ---- */
-.fotos-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-  margin-bottom: 14px;
-  min-width: 0;
-}
-/* Spacer schiebt Browse-Tools (Suche, Sortierung, Auswählen) nach rechts */
-.fotos-toolbar-fill { flex: 1 1 auto; min-width: 8px; }
-.fotos-toolbar .fotos-katpick { flex-shrink: 0; }
-/* „Browse"-Zeile: Filter-Chips (links) + Zähler (rechts) */
-.fotos-browsebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-.fotos-browsebar .fotos-filter { margin-bottom: 0; flex: 1 1 auto; }
-.fotos-browsebar .fotos-count { flex: 0 0 auto; }
 
 /* Auswahl-Aktionsleiste (sticky oben) */
 .fotos-bulkbar {
