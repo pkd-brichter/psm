@@ -300,26 +300,24 @@ export function initFotos(
       ${emptyHtml}
     </div>`;
   } else {
-    // Desktop: aufgeräumte Toolbar – Aufnahme (links) klar getrennt von
-    // Stöbern/Steuerung (rechts); Filter-Chips als eigene „Browse"-Zeile mit Zähler.
+    // Desktop: flache Toolbar – eine Zeile, kein Wrapping. Aufnahme-Buttons links,
+    // Browse-Tools rechts, flexibler Spacer dazwischen.
     host.innerHTML = `
     <div class="fotos-wrap fotos-wrap--desktop">
       <div class="fotos-toolbar">
-        <div class="fotos-toolbar-capture">
-          ${cameraBtn()}
-          ${galleryBtn}
-          <label class="fotos-katpick">${escapeHtml(t("Neue Fotos →"))} ${captureSelect(
-            "form-select-sm",
-          )}</label>
-          <span class="fotos-hint" data-role="fotos-status"></span>
-        </div>
-        <div class="fotos-toolbar-controls">
-          ${searchBox}
-          <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
-            t("Sortierung umschalten"),
-          )}"></button>
-          ${selectBtn}
-        </div>
+        ${cameraBtn()}
+        ${galleryBtn}
+        <label class="fotos-katpick" title="${escapeHtml(t("Kategorie für neue Fotos"))}">
+          <i class="bi bi-tag-fill"></i>
+          ${captureSelect("form-select-sm")}
+        </label>
+        <span class="fotos-hint" data-role="fotos-status"></span>
+        <span class="fotos-toolbar-fill"></span>
+        ${searchBox}
+        <button type="button" class="fotos-sort" data-role="fotos-sort" title="${escapeHtml(
+          t("Sortierung umschalten"),
+        )}"></button>
+        ${selectBtn}
       </div>
       <div class="fotos-browsebar">
         <div class="fotos-filter" data-role="fotos-filter">${buildFilterChips(activeFilter)}</div>
@@ -487,18 +485,15 @@ export function initFotos(
     }
   }
 
-  function tileHtml(f: FotoMeta): string {
+  function tileHtml(f: FotoMeta, showCatBadge = false): string {
     const kat = kategorieLabel(f.kategorie);
     const sel = selected.has(f.id) ? " is-selected" : "";
-    // Kategorie-Badge nur im „Alle"-Filter zeigen – bei aktivem Kategorie-Filter
-    // ist es auf JEDER Kachel dasselbe und nur störendes Rauschen.
-    const showBadge = !activeFilter && kat;
     return `
       <button type="button" class="fotos-tile${sel}" data-foto-id="${f.id}" title="${escapeHtml(
         displayName(f),
       )}">
         <img class="fotos-tile-img" data-thumb-id="${f.id}" alt="${escapeHtml(displayName(f))}" loading="lazy" decoding="async" />
-        ${showBadge ? `<span class="fotos-badge">${escapeHtml(kat)}</span>` : ""}
+        ${showCatBadge && kat ? `<span class="fotos-badge">${escapeHtml(kat)}</span>` : ""}
         <span class="fotos-tile-time">${escapeHtml(fmtTime(f.createdAt))}</span>
         <span class="fotos-tile-check"><i class="bi bi-check-lg"></i></span>
       </button>`;
@@ -548,13 +543,16 @@ export function initFotos(
     const visible = items.slice(0, renderLimit);
     const hasMore = items.length > visible.length;
     const buckets = buildBuckets(visible);
+    // Badge nur zeigen wenn tatsächlich mehrere Kategorien im aktuellen View vorkommen.
+    const cats = new Set(visible.map((f) => f.kategorie));
+    const showCatBadge = cats.size > 1;
     gallery.innerHTML =
       buckets
         .map(
           (b) => `
         <div class="fotos-section">
           <div class="fotos-section-head">${escapeHtml(b.label)} <span>· ${b.items.length}</span></div>
-          <div class="fotos-grid">${b.items.map(tileHtml).join("")}</div>
+          <div class="fotos-grid">${b.items.map((f) => tileHtml(f, showCatBadge)).join("")}</div>
         </div>`,
         )
         .join("") +
