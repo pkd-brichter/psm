@@ -13,33 +13,44 @@
 import {
   exportMobileUnshared,
   markMobileShared,
+  deleteSharedHistory,
   exportFotos,
   clearFotos,
   persistSqliteDatabaseFile,
 } from "@scripts/core/storage/sqlite";
+import { emit } from "@scripts/core/eventBus";
 import { toast } from "@scripts/core/toast";
-import { t } from "@scripts/core/i18n";
 import { setUnsharedCount } from "./unshared";
 import { zipSync, strToU8 } from "fflate";
 
 /**
- * Nach erfolgreichem Senden: Fotos vom Gerät entfernen (mobil = reiner
- * Erfassungs-/Weitergabe-Client, „nichts hinterlassen" → kein Speicher-Ballast).
- * Die Erfassungen (Text) bleiben für die PDF-Ansicht erhalten.
+ * Nach erfolgreichem Senden: alle geteilten History-Einträge und Fotos
+ * vollständig löschen. Mobil = reiner Erfassungs-/Weitergabe-Client,
+ * kein Ballast auf dem Gerät hinterlassen.
  */
-async function clearFotosAfterSend(): Promise<void> {
-  try {
-    const res = await clearFotos();
-    await persistSqliteDatabaseFile().catch(() => undefined);
-    window.dispatchEvent(
-      new CustomEvent("fotos:changed", { detail: { added: 0 } }),
-    );
-    if (res?.deleted) {
-      toast.info(`${res.deleted} ${t("Foto(s) gesendet und vom Gerät entfernt.")}`);
-    }
-  } catch (err) {
-    console.warn("[Share] Fotos konnten nach dem Senden nicht entfernt werden", err);
-  }
+async function cleanupAfterShare(): Promise<void> {
+  await markMobileShared().catch((err) =>
+    console.warn("[Share] markMobileShared fehlgeschlagen:", err),
+  );
+  const histRes = await deleteSharedHistory().catch((err) => {
+    console.warn("[Share] deleteSharedHistory fehlgeschlagen:", err);
+    return null;
+  });
+  const fotosRes = await clearFotos().catch((err) => {
+    console.warn("[Share] clearFotos fehlgeschlagen:", err);
+    return null;
+  });
+  await persistSqliteDatabaseFile().catch(() => undefined);
+  setUnsharedCount(0);
+
+  // UI aktualisieren: History-Liste leeren, Foto-Badge zurücksetzen.
+  emit("history:data-changed", { type: "deleted" });
+  window.dispatchEvent(new CustomEvent("fotos:changed", { detail: { added: 0 } }));
+
+  const parts: string[] = [];
+  if (histRes?.deleted) parts.push(`${histRes.deleted} Eintrag/Einträge`);
+  if (fotosRes?.deleted) parts.push(`${fotosRes.deleted} Foto(s)`);
+  toast.info(parts.length ? `Geteilt und gelöscht: ${parts.join(", ")}.` : "Geteilt.");
 }
 
 /** base64 (ohne data:-Präfix) -> rohe Bytes für echte Bilddatei im ZIP. */
@@ -151,28 +162,7 @@ export async function shareMobileData(): Promise<void> {
         title: "PSM-Daten",
         text: "Pflanzenschutz-Erfassung (ZIP inkl. Fotos) – am Desktop über Import/Merge einspielen.",
       });
-      // Erfassungen als geteilt markieren, damit sie beim nächsten Teilen
-      // NICHT erneut mit exportiert werden.
-      await markMobileShared().catch((err) =>
-        console.warn("[Share] markMobileShared fehlgeschlagen:", err),
-      );
-      await persistSqliteDatabaseFile().catch(() => undefined);
-      setUnsharedCount(0);
-      // WICHTIG (Datenverlust-Schutz): nav.share "gelingt" bereits, wenn das
-      // Share-Sheet die Datei an eine Ziel-App (Mail/Files/WhatsApp) ÜBERGIBT –
-      // NICHT, wenn sie am PC ankommt und importiert wurde. Daher Fotos NICHT
-      // automatisch löschen, sondern nur nach ausdrücklicher Bestätigung.
-      const confirmDelete =
-        typeof window.confirm === "function"
-          ? window.confirm(
-              "Daten wurden geteilt.\n\nFotos jetzt vom Gerät löschen?\nNur bestätigen, wenn sie am PC bereits importiert wurden – sonst gehen sie verloren.",
-            )
-          : false;
-      if (confirmDelete) {
-        await clearFotosAfterSend();
-      } else {
-        toast.info("Geteilt. Fotos bleiben auf dem Gerät, bis du sie aufräumst.");
-      }
+      await cleanupAfterShare();
       return;
     } catch (err) {
       // Abbruch durch Nutzer ist kein Fehler.
@@ -193,14 +183,7 @@ export async function shareMobileData(): Promise<void> {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    await markMobileShared().catch((err) =>
-      console.warn("[Share] markMobileShared fehlgeschlagen:", err),
-    );
-    await persistSqliteDatabaseFile().catch(() => undefined);
-    setUnsharedCount(0);
-    // Beim Download-Fallback NICHT automatisch löschen: a.click() bestätigt nicht,
-    // ob die Datei wirklich gespeichert wurde – sonst Datenverlust-Falle.
-    toast.info("Datei wurde heruntergeladen.");
+    await cleanupAfterShare();
   } catch (err) {
     console.error("[Share] Download fehlgeschlagen", err);
     toast.error("Teilen wird auf diesem Gerät nicht unterstützt.");

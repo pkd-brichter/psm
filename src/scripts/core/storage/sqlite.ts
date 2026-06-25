@@ -524,6 +524,17 @@ export async function markMobileShared(): Promise<{ marked: number }> {
 }
 
 /**
+ * Mobile-only: delete all history entries that have been marked as shared.
+ * Called after markMobileShared() to leave the device completely clean.
+ */
+export async function deleteSharedHistory(): Promise<{ deleted: number }> {
+  if (!worker) {
+    throw new Error("Database not initialized");
+  }
+  return await callWorker("deleteSharedHistory");
+}
+
+/**
  * Import database snapshot
  */
 export async function importSnapshot(data: any): Promise<void> {

@@ -2415,6 +2415,9 @@ self.onmessage = async function (event) {
       case "markMobileShared":
         result = await markMobileShared();
         break;
+      case "deleteSharedHistory":
+        result = await deleteSharedHistory();
+        break;
       case "upsertMedium":
         result = await upsertMedium(payload);
         break;
@@ -4336,6 +4339,16 @@ async function markMobileShared() {
     db.exec("UPDATE history SET mobile_shared_at = datetime('now') WHERE mobile_shared_at IS NULL");
   }
   return { marked: count };
+}
+
+async function deleteSharedHistory() {
+  if (!db) throw new Error("Database not initialized");
+  const count = db.selectValue("SELECT COUNT(*) FROM history WHERE mobile_shared_at IS NOT NULL") || 0;
+  if (count > 0) {
+    db.exec("DELETE FROM history_items WHERE history_id IN (SELECT id FROM history WHERE mobile_shared_at IS NOT NULL)");
+    db.exec("DELETE FROM history WHERE mobile_shared_at IS NOT NULL");
+  }
+  return { deleted: count };
 }
 
 /**
