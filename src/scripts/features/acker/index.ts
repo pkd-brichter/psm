@@ -1320,14 +1320,14 @@ export function initAcker(container: Element | null, services: Services): void {
       doubleClickZoom: false,
       zoomControl: true,
       attributionControl: true,
-      // Smoother zoom: finer steps, slower wheel trigger
-      zoomSnap: 0.1,
-      zoomDelta: 0.5,
-      wheelPxPerZoomLevel: 80,
-      // Inertia: natural pan momentum
+      // Feineres Zoom ohne Slow-Motion: 0.25-Schritte, normaler Wheel-Speed
+      zoomSnap: 0.25,
+      zoomDelta: 1,
+      wheelPxPerZoomLevel: 50,
+      // Pan-Trägheit: kurzes natürliches Nachgleiten
       inertia: true,
-      inertiaDeceleration: 1200,
-      inertiaMaxSpeed: 1200,
+      inertiaDeceleration: 2500,
+      inertiaMaxSpeed: 1500,
     }).setView([47.818, 8.976], 17);
     const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles © Esri" }).addTo(map);
