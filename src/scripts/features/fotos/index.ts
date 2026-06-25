@@ -490,12 +490,15 @@ export function initFotos(
   function tileHtml(f: FotoMeta): string {
     const kat = kategorieLabel(f.kategorie);
     const sel = selected.has(f.id) ? " is-selected" : "";
+    // Kategorie-Badge nur im „Alle"-Filter zeigen – bei aktivem Kategorie-Filter
+    // ist es auf JEDER Kachel dasselbe und nur störendes Rauschen.
+    const showBadge = !activeFilter && kat;
     return `
       <button type="button" class="fotos-tile${sel}" data-foto-id="${f.id}" title="${escapeHtml(
         displayName(f),
       )}">
         <img class="fotos-tile-img" data-thumb-id="${f.id}" alt="${escapeHtml(displayName(f))}" loading="lazy" decoding="async" />
-        ${kat ? `<span class="fotos-badge">${escapeHtml(kat)}</span>` : ""}
+        ${showBadge ? `<span class="fotos-badge">${escapeHtml(kat)}</span>` : ""}
         <span class="fotos-tile-time">${escapeHtml(fmtTime(f.createdAt))}</span>
         <span class="fotos-tile-check"><i class="bi bi-check-lg"></i></span>
       </button>`;

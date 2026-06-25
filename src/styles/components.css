@@ -1543,6 +1543,10 @@ html.qs-mode .card-dark {
 
 /* ===== Fotos (Galerie + Vollansicht) ===== */
 .fotos-wrap { padding: 4px 0; }
+/* Desktop: Inhalt auf eine ruhige Lesebreite begrenzen + zentrieren (wie der
+   restliche App-Content), sonst zerfasert die Galerie über die ganze Ultrawide-
+   Breite und wenige Fotos „kleben" links im Leerraum. */
+.fotos-wrap--desktop { max-width: 1200px; margin-inline: auto; }
 .fotos-bar {
   display: flex;
   align-items: center;
@@ -1734,8 +1738,8 @@ html.qs-mode .card-dark {
 .fotos-section-head span { color: var(--text-muted); font-weight: 600; }
 .fotos-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
 }
 .fotos-tile {
   position: relative;
@@ -1813,13 +1817,14 @@ body.m-page .fotos-tile { border-radius: 6px; }
   position: absolute;
   top: 6px;
   left: 6px;
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(15, 23, 42, 0.6);
   color: #fff;
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 999px;
-  max-width: calc(100% - 12px);
+  /* Nie die ganze Kachel überspannen – sonst wirkt es wie ein schwarzer Balken */
+  max-width: calc(100% - 44px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
